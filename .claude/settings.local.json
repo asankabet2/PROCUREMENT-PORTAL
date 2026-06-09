@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"c:/Users/SPAGAD/Desktop/PROCUREMENT SITE\" -maxdepth 3 -type d 2>/dev/null | head -50)",
+      "Read(//c/Users/SPAGAD/Desktop/PROCUREMENT SITE/**)",
+      "Bash(node --check routes/criteriaLibrary.routes.js)",
+      "Bash(node --check helpers/notifications.js)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\SPAGAD\\Desktop\\PROCUREMENT SITE\\procurement-backend\\procurement-backend\\sql",
+      "c:\\Users\\SPAGAD\\Desktop\\PROCUREMENT SITE\\procurement-backend\\procurement-backend\\helpers",
+      "c:\\Users\\SPAGAD\\Desktop\\PROCUREMENT SITE\\procurement-backend\\procurement-backend"
+    ]
+  }
+}

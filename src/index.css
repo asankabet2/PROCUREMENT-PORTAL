@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 20 10% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 20 10% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 20 10% 15%;
+
+    --primary: 18 78% 56%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 20 60% 95%;
+    --secondary-foreground: 18 78% 40%;
+
+    --muted: 20 10% 93%;
+    --muted-foreground: 20 10% 45%;
+
+    --accent: 20 60% 95%;
+    --accent-foreground: 18 78% 40%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 20 10% 15%;
+
+    --border: 20 10% 88%;
+    --input: 20 10% 88%;
+    --ring: 18 78% 56%;
+
+    --radius: 0.5rem;
+
+    --surface: 0 0% 100%;
+    --surface-elevated: 20 10% 96%;
+
+    --sidebar-background: 20 15% 18%;
+    --sidebar-foreground: 20 10% 75%;
+    --sidebar-primary: 18 78% 56%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 20 15% 25%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 20 10% 25%;
+    --sidebar-ring: 18 78% 56%;
+  }
+}
+
+
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted));
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    @apply bg-card border border-border rounded-lg backdrop-blur-sm;
+  }
+  .stat-card {
+    @apply glass-card p-6 transition-all duration-200 hover:border-primary/50;
+  }
+  .badge-open {
+    @apply bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+  }
+  .badge-closed {
+    @apply bg-red-500/20 text-red-400 border border-red-500/30;
+  }
+  .badge-awarded {
+    @apply bg-blue-500/20 text-blue-400 border border-blue-500/30;
+  }
+  .badge-draft {
+    @apply bg-slate-500/20 text-slate-400 border border-slate-500/30;
+  }
+  .badge-pending {
+    @apply bg-amber-500/20 text-amber-400 border border-amber-500/30;
+  }
+  .badge-approved {
+    @apply bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+  }
+  .badge-rejected {
+    @apply bg-red-500/20 text-red-400 border border-red-500/30;
+  }
+  .badge-blacklisted {
+    @apply bg-red-900/30 text-red-300 border border-red-800/30;
+  }
+  .badge-submitted {
+    @apply bg-blue-500/20 text-blue-400 border border-blue-500/30;
+  }
+  .badge-under-review {
+    @apply bg-amber-500/20 text-amber-400 border border-amber-500/30;
+  }
+  .badge-shortlisted {
+    @apply bg-cyan-500/20 text-cyan-400 border border-cyan-500/30;
+  }
+}
