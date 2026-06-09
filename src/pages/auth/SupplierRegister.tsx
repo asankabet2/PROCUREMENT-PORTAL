@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import StepIndicator from '@/components/StepIndicator';
 import { generateId } from '@/utils/helpers';
 import { CheckCircle, Upload, X, Loader2, Calendar, AlertTriangle } from 'lucide-react';
-import TermsOfUseModal from '@/components/Termsofusemodal';
+import TermsOfUseModal from '@/components/TermsOfUseModal';
 import PrivacyPolicyModal from '@/components/Privacypolicymodal';
 import { useNotification } from '@/context/NotificationContext';
 import { 
