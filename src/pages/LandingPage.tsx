@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import logo from '@/assets/logo.png';
+import logo from '@/assets/Logo.png';
 import { Shield, Truck, FileText, Users, BarChart3, CheckCircle, ArrowRight } from 'lucide-react';
-import TermsOfUseModal from '@/components/Termsofusemodal';
+import TermsOfUseModal from '@/components/TermsOfUseModal';
 import PrivacyPolicyModal from '@/components/Privacypolicymodal';
 import { getPublicStats } from '@/services/api';
 
