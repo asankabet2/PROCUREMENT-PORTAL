@@ -152,10 +152,17 @@ export default function BidSubmission() {
     itemEntries[itemNo] || { included: true, quantity: 0, unitPrice: 0 };
 
   const updateEntry = (itemNo: number, field: 'quantity' | 'unitPrice', value: number) => {
-    setItemEntries((prev) => ({
-      ...prev,
-      [itemNo]: { ...getEntry(itemNo), [field]: value },
-    }));
+    setItemEntries((prev) => {
+      const item = tender?.items.find(i => i.itemNo === itemNo);
+      let clamped = value;
+      if (field === 'quantity' && item) {
+        clamped = Math.min(value, item.quantity);
+      }
+      return {
+        ...prev,
+        [itemNo]: { ...getEntry(itemNo), [field]: clamped },
+      };
+    });
   };
 
   const toggleIncluded = (itemNo: number) => {
@@ -435,6 +442,7 @@ export default function BidSubmission() {
                               type="number"
                               min="0"
                               step="1"
+                              max={item.quantity}
                               placeholder="0"
                               value={entry.quantity || ''}
                               onChange={(e) =>
