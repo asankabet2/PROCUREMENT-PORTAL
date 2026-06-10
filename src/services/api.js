@@ -217,7 +217,6 @@ export const getEmailTemplates    = ()                   => api.get('/email-temp
 export const updateEmailTemplate  = (templateId, data)  => api.put(`/email-templates/${templateId}`, data);
 export const getEmailTemplateTypes = ()                       => api.get('/email-templates/types');
 export const createEmailTemplate   = (data)                   => api.post('/email-templates', data);
-export const deleteEmailTemplate = (templateId) => api.delete(`/email-templates/${templateId}`);
 
 // ============ ADMIN UTILITIES ============
 export const updateTenderStatuses   = () => api.get('/admin/update-tender-statuses');

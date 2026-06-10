@@ -6,7 +6,7 @@ import { Save, Plus, Trash2, Loader2, RotateCcw, Search, Edit2, X, Mail } from '
 import {
     getAllCategories, createTenderCategory, deactivateCategory, restoreCategory,
     getDefaultDocuments, getAuditLog,
-    getEmailTemplates, getEmailTemplateTypes, createEmailTemplate, updateEmailTemplate, deleteEmailTemplate,
+    getEmailTemplates, getEmailTemplateTypes, createEmailTemplate, updateEmailTemplate,
 } from '@/services/api';
 import PanelMembersSettings from './PanelMembersSettings';
 import CriteriaLibrarySettings from './CriteriaLibrarySettings';
@@ -64,7 +64,6 @@ interface EmailTemplateType {
     TemplateTypeName: string;
 }
 
-// Placeholder reference shown as a hint to the admin
 const PLACEHOLDERS = ['{{supplierName}}', '{{tenderTitle}}', '{{closingDate}}', '{{bidId}}', '{{submittedDate}}', '{{orgName}}'];
 
 export default function AdminSettings() {
@@ -108,7 +107,6 @@ export default function AdminSettings() {
 
     const tabs = ['General', 'Categories', 'Documents', 'Email Templates', 'Audit Log', 'Panel Members', 'Evaluation Criteria'];
 
-    // Fetch categories
     const fetchAllCategories = async () => {
         try {
             setLoadingCategories(true);
@@ -126,7 +124,6 @@ export default function AdminSettings() {
 
     useEffect(() => { fetchAllCategories(); }, []);
 
-    // Fetch default documents
     useEffect(() => {
         const fetchDefaultDocs = async () => {
             try {
@@ -139,7 +136,6 @@ export default function AdminSettings() {
         fetchDefaultDocs();
     }, []);
 
-    // Fetch audit log
     const fetchAuditLog = async () => {
         setRefreshingAudit(true);
         try {
@@ -155,7 +151,6 @@ export default function AdminSettings() {
 
     useEffect(() => { fetchAuditLog(); }, []);
 
-    // Fetch email templates and types when tab 3 is active
     const fetchEmailTemplates = async () => {
         setLoadingTemplates(true);
         try {
@@ -177,7 +172,6 @@ export default function AdminSettings() {
         if (tab === 3) fetchEmailTemplates();
     }, [tab]);
 
-    // Open edit modal
     const openEditModal = (template: EmailTemplate) => {
         setEditingTemplate(template);
         setEditSubject(template.Subject);
@@ -185,7 +179,6 @@ export default function AdminSettings() {
         setShowEditModal(true);
     };
 
-    // Save edited template
     const handleSaveTemplate = async () => {
         if (!editingTemplate) return;
         if (!editSubject.trim()) { addToast('Subject is required', 'error'); return; }
@@ -208,19 +201,6 @@ export default function AdminSettings() {
         }
     };
 
-    // Delete template
-    const handleDeleteTemplate = async (templateId: string, typeName: string) => {
-        if (!confirm(`Delete the template for "${typeName}"? This cannot be undone.`)) return;
-        try {
-            await deleteEmailTemplate(templateId);
-            addToast('Template deleted', 'success');
-            await fetchEmailTemplates();
-        } catch (error: any) {
-            addToast(error.response?.data?.message || 'Failed to delete template', 'error');
-        }
-    };
-
-    // Open create modal — only show types that don't already have a template
     const openCreateModal = () => {
         const usedTypeIds = new Set(emailTemplates.map(t => t.TemplateTypeID));
         const availableTypes = emailTemplateTypes.filter(t => !usedTypeIds.has(t.TemplateTypeID));
@@ -234,7 +214,6 @@ export default function AdminSettings() {
         setShowCreateModal(true);
     };
 
-    // Save new template
     const handleCreateTemplate = async () => {
         if (!createTypeId) { addToast('Select a template type', 'error'); return; }
         if (!createSubject.trim()) { addToast('Subject is required', 'error'); return; }
@@ -352,7 +331,6 @@ export default function AdminSettings() {
         addToast('Document removed', 'success');
     };
 
-    // Types that don't yet have a template (used to show/hide the Add button)
     const usedTypeIds = new Set(emailTemplates.map(t => t.TemplateTypeID));
     const hasAvailableTypes = emailTemplateTypes.some(t => !usedTypeIds.has(t.TemplateTypeID));
 
@@ -551,16 +529,10 @@ export default function AdminSettings() {
                                                     Last updated: {formatDateTime(tmpl.UpdatedAt)}
                                                 </p>
                                             </div>
-                                            <div className="flex items-center gap-2 shrink-0">
-                                                <button onClick={() => openEditModal(tmpl)}
-                                                    className="flex items-center gap-1 px-2.5 py-1.5 bg-primary/10 text-primary rounded-md text-xs hover:bg-primary/20 transition-colors">
-                                                    <Edit2 size={12} /> Edit
-                                                </button>
-                                                <button onClick={() => handleDeleteTemplate(tmpl.TemplateID, tmpl.TemplateTypeName)}
-                                                    className="flex items-center gap-1 px-2.5 py-1.5 bg-destructive/10 text-destructive rounded-md text-xs hover:bg-destructive/20 transition-colors">
-                                                    <Trash2 size={12} /> Delete
-                                                </button>
-                                            </div>
+                                            <button onClick={() => openEditModal(tmpl)}
+                                                className="flex items-center gap-1 px-2.5 py-1.5 bg-primary/10 text-primary rounded-md text-xs hover:bg-primary/20 transition-colors shrink-0">
+                                                <Edit2 size={12} /> Edit
+                                            </button>
                                         </div>
                                     </div>
                                 ))}
