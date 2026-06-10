@@ -212,6 +212,13 @@ export const getAdminUsers   = ()     => api.get('/admin/users');
 export const createAdminUser = (data) => api.post('/admin/users', data);
 export const deleteAdminUser = (id)   => api.delete(`/admin/users/${id}`);
 
+// ============ EMAIL TEMPLATES ============
+export const getEmailTemplates    = ()                   => api.get('/email-templates');
+export const updateEmailTemplate  = (templateId, data)  => api.put(`/email-templates/${templateId}`, data);
+export const getEmailTemplateTypes = ()                       => api.get('/email-templates/types');
+export const createEmailTemplate   = (data)                   => api.post('/email-templates', data);
+export const deleteEmailTemplate = (templateId) => api.delete(`/email-templates/${templateId}`);
+
 // ============ ADMIN UTILITIES ============
 export const updateTenderStatuses   = () => api.get('/admin/update-tender-statuses');
 export const checkClosingTenders    = () => api.get('/admin/check-closing-tenders');
