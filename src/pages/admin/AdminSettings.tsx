@@ -5,7 +5,7 @@ import { organizationSettings } from '@/utils/helpers';
 import { Save, Plus, Trash2, Loader2, RotateCcw, Search, Edit2, X, Mail } from 'lucide-react';
 import {
     getAllCategories, createTenderCategory, deactivateCategory, restoreCategory,
-    getDefaultDocuments, getAuditLog,
+    getAuditLog,
     getEmailTemplates, getEmailTemplateTypes, createEmailTemplate, updateEmailTemplate,
 } from '@/services/api';
 import PanelMembersSettings from './PanelMembersSettings';
@@ -78,8 +78,6 @@ export default function AdminSettings() {
     const [showInactive, setShowInactive] = useState(false);
     const [newCat, setNewCat] = useState('');
     const [newCatDescription, setNewCatDescription] = useState('');
-    const [reqDocs, setReqDocs] = useState<string[]>([]);
-    const [newDoc, setNewDoc] = useState('');
     const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
     const [auditSearch, setAuditSearch] = useState('');
     const [refreshingAudit, setRefreshingAudit] = useState(false);
@@ -105,7 +103,7 @@ export default function AdminSettings() {
     const [createBody, setCreateBody] = useState('');
     const [creatingTemplate, setCreatingTemplate] = useState(false);
 
-    const tabs = ['General', 'Categories', 'Documents', 'Email Templates', 'Audit Log', 'Panel Members', 'Evaluation Criteria'];
+    const tabs = ['General', 'Categories', 'Email Templates', 'Audit Log', 'Panel Members', 'Evaluation Criteria'];
 
     const fetchAllCategories = async () => {
         try {
@@ -124,17 +122,6 @@ export default function AdminSettings() {
 
     useEffect(() => { fetchAllCategories(); }, []);
 
-    useEffect(() => {
-        const fetchDefaultDocs = async () => {
-            try {
-                const { data } = await getDefaultDocuments();
-                setReqDocs(Array.isArray(data) ? data : ['Company Profile', 'Certificate of Incorporation', 'Tax Clearance Certificate']);
-            } catch {
-                setReqDocs(['Company Profile', 'Certificate of Incorporation', 'Tax Clearance Certificate']);
-            }
-        };
-        fetchDefaultDocs();
-    }, []);
 
     const fetchAuditLog = async () => {
         setRefreshingAudit(true);
@@ -169,7 +156,7 @@ export default function AdminSettings() {
     };
 
     useEffect(() => {
-        if (tab === 3) fetchEmailTemplates();
+        if (tab === 2) fetchEmailTemplates();
     }, [tab]);
 
     const openEditModal = (template: EmailTemplate) => {
@@ -307,30 +294,7 @@ export default function AdminSettings() {
         }
     };
 
-    const saveDocuments = async () => {
-        setSaving(true);
-        try {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            addToast('Documents updated successfully', 'success');
-        } catch {
-            addToast('Failed to update documents', 'error');
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const addDocument = () => {
-        if (!newDoc.trim()) return;
-        setReqDocs([...reqDocs, newDoc.trim()]);
-        setNewDoc('');
-        addToast('Document added', 'success');
-    };
-
-    const removeDocument = (index: number) => {
-        setReqDocs(reqDocs.filter((_, i) => i !== index));
-        addToast('Document removed', 'success');
-    };
-
+    
     const usedTypeIds = new Set(emailTemplates.map(t => t.TemplateTypeID));
     const hasAvailableTypes = emailTemplateTypes.some(t => !usedTypeIds.has(t.TemplateTypeID));
 
@@ -447,37 +411,8 @@ export default function AdminSettings() {
                     </div>
                 )}
 
-                {/* Tab: Documents */}
-                {tab === 2 && (
-                    <div className="glass-card p-6 space-y-4 max-w-xl">
-                        <h3 className="font-bold">Default Required Documents</h3>
-                        <div className="space-y-2 max-h-80 overflow-y-auto">
-                            {reqDocs.map((d, i) => (
-                                <div key={i} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                                    <span className="text-sm">{d}</span>
-                                    <button onClick={() => removeDocument(i)} className="text-destructive hover:bg-destructive/10 p-1.5 rounded">
-                                        <Trash2 size={14} />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="flex gap-2">
-                            <input value={newDoc} onChange={e => setNewDoc(e.target.value)} placeholder="New document requirement"
-                                className="flex-1 px-3 py-2 bg-muted/50 border border-border rounded-lg text-sm outline-none" />
-                            <button onClick={addDocument} className="flex items-center gap-1 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm">
-                                <Plus size={14} /> Add
-                            </button>
-                        </div>
-                        <button onClick={saveDocuments} disabled={saving}
-                            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium mt-2 disabled:opacity-50">
-                            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                            {saving ? 'Saving...' : 'Save Documents'}
-                        </button>
-                    </div>
-                )}
-
                 {/* Tab: Email Templates */}
-                {tab === 3 && (
+                {tab === 2 && (
                     <div className="glass-card p-6 space-y-4">
                         <div className="flex items-center justify-between">
                             <div>
@@ -542,7 +477,7 @@ export default function AdminSettings() {
                 )}
 
                 {/* Tab: Audit Log */}
-                {tab === 4 && (
+                {tab === 3 && (
                     <div className="space-y-4">
                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                             <div className="flex items-center bg-muted/50 rounded-lg px-3 py-2 gap-2 flex-1 max-w-md">
@@ -602,8 +537,8 @@ export default function AdminSettings() {
                     </div>
                 )}
 
-                {tab === 5 && <PanelMembersSettings />}
-                {tab === 6 && <CriteriaLibrarySettings />}
+                {tab === 4 && <PanelMembersSettings />}
+                {tab === 5 && <CriteriaLibrarySettings />}
             </div>
 
             {/* Edit Template Modal */}
