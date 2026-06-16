@@ -121,7 +121,7 @@ export default function SupplierLogin() {
           </button>
 
           <p className="text-center text-xs text-muted-foreground">
-            Demo: supplier1@medtech.com / Supplier@1234
+            Demo: jamesdaniel@gmail.com / Same as password
           </p>
         </form>
 
