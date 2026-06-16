@@ -29,9 +29,7 @@ export default function SupplierLogin() {
 
     if (result.success) {
       if (result.requiresPasswordChange) {
-        // FIX: show password change modal instead of navigating —
-        //      AuthContext hasn't set user yet so ProtectedRoute would
-        //      reject the navigation and bounce to landing page
+        
         setShowChangePassword(true);
       } else {
         navigate('/supplier/dashboard');
