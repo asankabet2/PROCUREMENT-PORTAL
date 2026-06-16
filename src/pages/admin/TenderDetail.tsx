@@ -4,7 +4,7 @@ import PortalLayout from '@/components/PortalLayout';
 import StatusBadge from '@/components/StatusBadge';
 import EmptyState from '@/components/EmptyState';
 import { formatDate, formatCurrency } from '@/utils/helpers';
-import { Edit, Award, Loader2, X, Eye, XCircle, Split } from 'lucide-react';
+import { Edit, Award, Loader2, X, Eye, XCircle, Split, AlertTriangle } from 'lucide-react';
 import { useNotification } from '@/context/NotificationContext';
 import { 
     getTenderById, 
@@ -94,6 +94,13 @@ interface ExpressedInterest {
     supplier?: Supplier;
 }
 
+interface EvalStatus {
+    evaluationConfigured: boolean;
+    evaluationComplete: boolean;
+    nonResponsiveSupplierIds: string[];
+    responsiveSupplierIds: string[];
+}
+
 function normaliseBid(raw: any, suppliers: Supplier[]): Bid {
     return {
         id:            raw.bidId  || raw.id,
@@ -112,6 +119,18 @@ function normaliseBid(raw: any, suppliers: Supplier[]): Bid {
         })),
         supplier: suppliers.find(s => s.id === raw.supplierId),
     };
+}
+
+// Derive a human-readable reason why awarding is blocked.
+function getAwardBlockReason(tender: Tender | null, bids: Bid[], evalStatus: EvalStatus | null): string | null {
+    if (!tender) return null;
+    if (tender.status !== 'Closed') return `Tender must be Closed before awarding. Current status: '${tender.status}'.`;
+    if (bids.length === 0) return 'No bids have been submitted. The tender should be re-advertised or cancelled.';
+    if (!evalStatus) return null; // eval status not loaded yet, backend will enforce
+    if (!evalStatus.evaluationConfigured) return 'Evaluation has not been configured. Please set up evaluation criteria and/or a panel before awarding.';
+    if (!evalStatus.evaluationComplete) return 'Evaluation is incomplete. Some bids are still pending review.';
+    if (evalStatus.responsiveSupplierIds.length === 0) return 'All bidders were found non-responsive. No eligible supplier can be awarded.';
+    return null;
 }
 
 type TabKey =
@@ -140,8 +159,7 @@ export default function TenderDetail() {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<TabKey>('info');
     const [itemAwards, setItemAwards] = useState<Map<number, { awarded: boolean; supplierNames: string[] }>>(new Map());
-
-    // Non-responsive supplier IDs from evaluation status — used to block awarding
+    const [evalStatus, setEvalStatus] = useState<EvalStatus | null>(null);
     const [nonResponsiveIds, setNonResponsiveIds] = useState<string[]>([]);
 
     // Award modal for whole tender
@@ -222,8 +240,9 @@ export default function TenderDetail() {
                 supplier: suppliersData.find(s => s.id === i.supplierId),
             })));
 
-            if (evalStatusRes.data?.nonResponsiveSupplierIds) {
-                setNonResponsiveIds(evalStatusRes.data.nonResponsiveSupplierIds);
+            if (evalStatusRes.data) {
+                setEvalStatus(evalStatusRes.data);
+                setNonResponsiveIds(evalStatusRes.data.nonResponsiveSupplierIds || []);
             }
 
             await fetchAwards();
@@ -249,18 +268,15 @@ export default function TenderDetail() {
 
     const handleAwardItem = async (bidId: string, supplierId: string, quantity: number, unitPrice: number, total: number) => {
         if (!id || !itemAwardData) return;
-        
         setAwardingItem(true);
         try {
             await awardTenderItem(id, itemAwardData.tenderItem.itemNo, {
-                bidId,
-                supplierId,
+                bidId, supplierId,
                 awardedQuantity: quantity,
                 awardedUnitPrice: unitPrice,
                 awardedTotal: total,
                 awardNote: ''
             });
-            
             addToast(`Item "${itemAwardData.tenderItem.description}" awarded successfully!`, 'success');
             setShowItemAwardModal(false);
             setItemAwardData(null);
@@ -352,7 +368,10 @@ export default function TenderDetail() {
     };
 
     const lowestBid = [...bids].sort((a, b) => a.grandTotal - b.grandTotal)[0];
-    const canAward  = tender?.status === 'Closed';
+
+    // Award gate: all five conditions must pass
+    const awardBlockReason = getAwardBlockReason(tender, bids, evalStatus);
+    const canAward  = !awardBlockReason;
     const canReject = tender?.status === 'Closed' || tender?.status === 'Open';
 
     if (loading) return (
@@ -371,9 +390,7 @@ export default function TenderDetail() {
 
     const getItemAwardStatus = (itemNo: number) => {
         const award = itemAwards.get(itemNo);
-        if (award) {
-            return { awarded: true, supplierNames: award.supplierNames };
-        }
+        if (award) return { awarded: true, supplierNames: award.supplierNames };
         return { awarded: false, supplierNames: [] as string[] };
     };
 
@@ -410,6 +427,14 @@ export default function TenderDetail() {
                     <span className="text-sm text-muted-foreground">•</span>
                     <span className="text-sm text-muted-foreground">{tender.category}</span>
                 </div>
+
+                {/* Award block banner — shown when tender is Closed but awarding is blocked */}
+                {tender.status === 'Closed' && awardBlockReason && (
+                    <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                        <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+                        <p className="text-sm text-amber-700">{awardBlockReason}</p>
+                    </div>
+                )}
 
                 {/* Tab bar (grouped) */}
                 <div className="flex items-center gap-1 bg-muted/30 rounded-lg p-1 overflow-x-auto">
@@ -592,10 +617,16 @@ export default function TenderDetail() {
                                     <tbody>
                                         {bids.map(b => {
                                             const isLowest = b.id === lowestBid?.id && b.status === 'Submitted';
+                                            const isNonResponsive = nonResponsiveIds.includes(b.supplierId);
                                             return (
                                                 <tr key={b.id} className={`border-b border-border/50 ${isLowest ? 'bg-success/5' : ''}`}>
                                                     <td className="p-3 font-mono text-xs">{b.id}</td>
-                                                    <td className="p-3 font-medium">{b.supplier?.companyName || b.supplierId}</td>
+                                                    <td className="p-3 font-medium">
+                                                        {b.supplier?.companyName || b.supplierId}
+                                                        {isNonResponsive && (
+                                                            <span className="ml-2 text-xs text-destructive">(Non-Responsive)</span>
+                                                        )}
+                                                    </td>
                                                     <td className="p-3">{b.supplier?.contactPerson || '—'}</td>
                                                     <td className="p-3 text-muted-foreground">{formatDate(b.submittedDate)}</td>
                                                     <td className="p-3 text-right font-medium">{formatCurrency(b.grandTotal)}</td>
@@ -616,7 +647,7 @@ export default function TenderDetail() {
                                                             </button>
                                                             {b.status === 'Submitted' && (
                                                                 <>
-                                                                    {canAward && (
+                                                                    {canAward && !isNonResponsive && (
                                                                         <button
                                                                             onClick={() => { setBidToAward(b); setAwardNote(''); setShowAwardModal(true); }}
                                                                             className="flex items-center gap-1 px-2 py-1 bg-success text-success-foreground rounded text-xs hover:bg-success/80 transition-colors"
@@ -652,8 +683,8 @@ export default function TenderDetail() {
                         <div className="p-4 border-b border-border">
                             <h3 className="font-bold">Bid Comparison by Item</h3>
                             <p className="text-xs text-muted-foreground mt-0.5">Click "View Bids" to see all supplier quotes for each item and award individually.</p>
-                            {!canAward && (
-                                <p className="text-xs text-red-500 mt-1">Awarding is only available once the tender is Closed.</p>
+                            {awardBlockReason && (
+                                <p className="text-xs text-amber-600 mt-1">{awardBlockReason}</p>
                             )}
                         </div>
                         {!tender.items?.length ? (
@@ -706,7 +737,7 @@ export default function TenderDetail() {
                                                                 onClick={() => handleViewSplit(item.itemNo)}
                                                                 disabled={!canAward}
                                                                 className="inline-flex items-center gap-1 px-3 py-1.5 bg-muted/50 text-foreground rounded-md text-xs hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                title={canAward ? "Split this item's quantity across multiple suppliers" : 'Tender must be Closed to award'}
+                                                                title={canAward ? "Split this item's quantity across multiple suppliers" : (awardBlockReason || 'Awarding not available')}
                                                             >
                                                                 <Split size={12} /> Split Award
                                                             </button>
@@ -809,12 +840,12 @@ export default function TenderDetail() {
                     </div>
                 )}
 
-                {activeTab === 'panel'        && <EvaluationPanel tenderId={id || ''} />}
-                {activeTab === 'criteria'     && <EvaluationCriteria tenderId={id || ''} />}
-                {activeTab === 'prelim'       && <PreliminaryEvaluation tenderId={id || ''} />}
-                {activeTab === 'technical'    && <TechnicalEvaluation tenderId={id || ''} />}
-                {activeTab === 'responsive'   && <Responsiveness tenderId={id || ''} view="responsive" />}
-                {activeTab === 'nonresponsive'&& <Responsiveness tenderId={id || ''} view="nonresponsive" />}
+                {activeTab === 'panel'         && <EvaluationPanel tenderId={id || ''} />}
+                {activeTab === 'criteria'      && <EvaluationCriteria tenderId={id || ''} />}
+                {activeTab === 'prelim'        && <PreliminaryEvaluation tenderId={id || ''} />}
+                {activeTab === 'technical'     && <TechnicalEvaluation tenderId={id || ''} />}
+                {activeTab === 'responsive'    && <Responsiveness tenderId={id || ''} view="responsive" />}
+                {activeTab === 'nonresponsive' && <Responsiveness tenderId={id || ''} view="nonresponsive" />}
             </div>
 
             {/* Award Tender Modal */}
