@@ -203,7 +203,7 @@ export default function AdminSupplierDocuments() {
       const blob = await fetchDocument(supplierId, fileName);
       const url  = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
-      setTimeout(() => window.URL.revokeObjectURL(url), 100);
+      setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
     } catch {
       addToast('Failed to open document', 'error');
     }

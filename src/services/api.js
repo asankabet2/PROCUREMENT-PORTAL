@@ -103,8 +103,10 @@ export const verifyExperience = (supplierId, index, data) =>
   api.patch(`/suppliers/${supplierId}/experiences/${index}/verify`, data);
 
 // ============ DOCUMENT VIEWING ============
-export const getDocumentUrl = (supplierId, fileName) =>
-  `${API_BASE_URL}/suppliers/${supplierId}/documents/${fileName}`;
+export const getDocumentUrl = (supplierId, fileName) => {
+  const cleanFileName = fileName.includes('/') ? fileName.split('/').pop() : fileName;
+  return `${API_BASE_URL}/suppliers/${supplierId}/documents/${cleanFileName}`;
+};
 
 export const getDocumentSignedUrl = (fileName) =>
   api.get('/suppliers/documents/signed-url', { params: { fileName } });

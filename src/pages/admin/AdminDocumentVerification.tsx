@@ -12,7 +12,7 @@ import {
   Clock,
   RefreshCw,
 } from 'lucide-react';
-import { 
+import api, { 
   getSuppliers,
   getSupplierDocuments, 
   verifyDocument,
@@ -140,11 +140,13 @@ export default function AdminDocumentVerification() {
     setShowRejectModal(true);
   };
 
-  const viewDocument = (supplierId: string, fileName: string, _docName: string) => {
+  const viewDocument = async (supplierId: string, fileName: string, _docName: string) => {
     try {
-      // Your backend serves files directly - open in new tab
       const documentUrl = getDocumentUrl(supplierId, fileName);
-      window.open(documentUrl, '_blank');
+      const response = await api.get(documentUrl, { responseType: 'blob' });
+      const blobUrl = URL.createObjectURL(response.data);
+      window.open(blobUrl, '_blank');
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
     } catch (error) {
       console.error('Error viewing document:', error);
       addToast('Failed to open document', 'error');

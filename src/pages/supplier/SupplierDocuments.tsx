@@ -137,7 +137,7 @@ export default function SupplierDocuments() {
       const blob = await fetchDocument(user!.id, cleanFileName);
       const url  = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
-      setTimeout(() => window.URL.revokeObjectURL(url), 10_000);
+      setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       console.error('Error viewing document:', err);
       addToast('Could not open document. Please try again.', 'error');
