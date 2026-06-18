@@ -15,11 +15,12 @@ interface Document {
   name: string;
   fileName: string;
   docType?: string;
-  status: 'Verified' | 'Pending' | 'Replaced' | 'Expired';
+  status: 'Verified' | 'Pending' | 'Replaced' | 'Expired' | 'Rejected';
   uploadDate: string;
   expiryDate?: string;
   requiresExpiry?: boolean;
   canRenew?: boolean;
+  rejectionReason?: string;
 }
 
 interface Supplier {
@@ -225,12 +226,15 @@ export default function SupplierDocuments() {
 
   // ── Categorise using computed expiry status ───────────────────────────────
 
-  const expiredDocuments  = supplier.documents.filter(d => getExpiryStatus(d) === 'expired');
+  const rejectedDocuments = supplier.documents.filter(d => d.status === 'Rejected');
+  const expiredDocuments  = supplier.documents.filter(d =>
+    d.status !== 'Rejected' && getExpiryStatus(d) === 'expired'
+  );
   const expiringDocuments = supplier.documents.filter(d =>
-    getExpiryStatus(d) === 'critical' || getExpiryStatus(d) === 'warning'
+    d.status !== 'Rejected' && (getExpiryStatus(d) === 'critical' || getExpiryStatus(d) === 'warning')
   );
   const validDocuments    = supplier.documents.filter(d =>
-    getExpiryStatus(d) === 'valid' || getExpiryStatus(d) === 'permanent'
+    d.status !== 'Rejected' && (getExpiryStatus(d) === 'valid' || getExpiryStatus(d) === 'permanent')
   );
 
   return (
@@ -238,13 +242,18 @@ export default function SupplierDocuments() {
       <div className="space-y-6 animate-fade-in max-w-3xl">
 
         {/* Warning banner */}
-        {(expiringDocuments.length > 0 || expiredDocuments.length > 0) && (
+        {(expiringDocuments.length > 0 || expiredDocuments.length > 0 || rejectedDocuments.length > 0) && (
           <div className="p-4 rounded-xl border bg-yellow-500/10 border-yellow-500/30">
             <div className="flex items-center gap-2 text-yellow-600 mb-2">
               <AlertTriangle size={20} />
-              <span className="font-semibold">Document Renewal Required</span>
+              <span className="font-semibold">Document Action Required</span>
             </div>
             <p className="text-sm text-muted-foreground">
+              {rejectedDocuments.length > 0 && (
+                <span className="block">
+                  ⚠️ {rejectedDocuments.length} document(s) were REJECTED. Please re-upload them.
+                </span>
+              )}
               {expiredDocuments.length > 0 && (
                 <span className="block">
                   ⚠️ {expiredDocuments.length} document(s) have EXPIRED. Please renew immediately.
@@ -256,6 +265,28 @@ export default function SupplierDocuments() {
                 </span>
               )}
             </p>
+          </div>
+        )}
+        
+        {/* Rejected */}
+        {rejectedDocuments.length > 0 && (
+          <div className="glass-card overflow-hidden border-red-500/30">
+            <div className="p-4 border-b border-border bg-red-500/5">
+              <h3 className="font-bold text-red-600 flex items-center gap-2">
+                <AlertTriangle size={16} />
+                Rejected Documents (Re-upload Required)
+              </h3>
+            </div>
+            {rejectedDocuments.map((doc, i) => (
+              <DocumentRow
+                key={i}
+                doc={doc}
+                viewingDoc={viewingDoc}
+                renewingDoc={renewingDoc}
+                onView={handleView}
+                onRenew={handleRenew}
+              />
+            ))}
           </div>
         )}
 
@@ -302,6 +333,8 @@ export default function SupplierDocuments() {
             ))}
           </div>
         )}
+
+        
 
         {/* Valid */}
         {validDocuments.length > 0 && (
@@ -450,7 +483,8 @@ function DocumentRow({
   const daysRemaining = getDaysRemaining(doc);
   const isExpired     = expiryStatus === 'expired';
   const isExpiring    = expiryStatus === 'critical' || expiryStatus === 'warning';
-  const canRenew      = doc.canRenew || isExpired || isExpiring;
+  const isRejected    = doc.status === 'Rejected';
+  const canRenew      = doc.canRenew || isExpired || isExpiring || isRejected;
 
   return (
     <div className={`flex items-center justify-between p-4 border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors ${isExpired ? 'bg-red-500/5' : isExpiring ? 'bg-yellow-500/5' : ''}`}>
@@ -480,6 +514,10 @@ function DocumentRow({
             {doc.status === 'Replaced' && (
               <p className="text-xs text-muted-foreground">(Replaced by newer version)</p>
             )}
+
+            {doc.status === 'Rejected' && doc.rejectionReason && (
+              <p className="text-xs text-red-500">Reason: {doc.rejectionReason}</p>
+            )}
           </div>
         </div>
       </div>
@@ -503,7 +541,7 @@ function DocumentRow({
             onClick={() => onRenew(doc)}
             disabled={renewingDoc === doc.name}
             className={`p-2 rounded transition-colors ${
-              isExpired
+              isExpired || isRejected
                 ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20'
                 : 'bg-primary/10 text-primary hover:bg-primary/20'
             }`}
