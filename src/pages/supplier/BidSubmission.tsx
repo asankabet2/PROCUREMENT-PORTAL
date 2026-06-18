@@ -6,7 +6,7 @@ import EmptyState from '@/components/EmptyState';
 import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
 import { getTenderById, getSupplierById, submitBid } from '@/services/api';
-import { formatCurrency, generateId } from '@/utils/helpers';
+import { formatCurrency} from '@/utils/helpers';
 import { CheckCircle, Download, Loader2, AlertTriangle } from 'lucide-react';
 import ExpiredDocumentsWarning from '@/components/ExpiredDocumentsWarning';
 import { useSupplierCompliance } from '@/hooks/useSupplierCompliance';
@@ -60,7 +60,7 @@ export default function BidSubmission() {
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
-  const [bidRef] = useState(generateId('BID-2026'));
+  const [submittedBidId, setSubmittedBidId] = useState<string>('');
   const [confirmed, setConfirmed] = useState(false);
   // Now stores both quantity and unitPrice per itemNo
   const [itemEntries, setItemEntries] = useState<Record<number, ItemEntry>>({});
@@ -72,8 +72,10 @@ export default function BidSubmission() {
   const PRICE_ITEMS_PER_PAGE = 10;
   const [pricePage, setPricePage] = useState(1);
 
-  const { hasExpiredDocuments, expiredDocuments, canParticipate, loading: complianceLoading } =
-    useSupplierCompliance(user?.id || '');
+  const {
+    hasExpiredDocuments, expiredDocuments, canParticipate,
+    complianceReason, loading: complianceLoading,
+  } = useSupplierCompliance(user?.id || '');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -97,10 +99,10 @@ export default function BidSubmission() {
   }, [id, user, addToast]);
 
   useEffect(() => {
-    if (!canParticipate && !loading && tender?.status === 'Open') {
-      addToast('You have expired documents. Please renew them before submitting a bid.', 'warning');
+    if (!canParticipate && !loading && tender?.status === 'Open' && complianceReason) {
+      addToast(complianceReason, 'warning');
     }
-  }, [canParticipate, loading, tender?.status, addToast]);
+  }, [canParticipate, loading, tender?.status, complianceReason, addToast]);
 
   if (loading || complianceLoading) {
     return (
@@ -133,6 +135,11 @@ export default function BidSubmission() {
       <PortalLayout type="supplier" title="Cannot Submit Bid" breadcrumb={['Supplier', 'Tenders', tender.id, 'Bid']}>
         <div className="max-w-2xl mx-auto">
           <ExpiredDocumentsWarning expiredDocuments={expiredDocuments} type="bid" />
+          {complianceReason && (
+            <div className="mt-4 p-4 bg-yellow-100 text-yellow-800 rounded-lg">
+              {complianceReason}
+            </div>
+          )}
           <div className="mt-4 flex justify-center">
             <button
               onClick={() => navigate('/supplier/documents')}
@@ -233,7 +240,7 @@ export default function BidSubmission() {
     if (!validate()) return;
 
     if (!canParticipate) {
-      addToast('Please renew your expired documents before submitting a bid', 'error');
+      addToast(complianceReason || 'Please resolve your document issues before submitting a bid', 'error');
       return;
     }
 
@@ -262,6 +269,7 @@ export default function BidSubmission() {
 
       if (response.status === 201) {
         setSubmitted(true);
+        setSubmittedBidId(response.data?.bidId);
         addToast('Bid submitted successfully!', 'success');
       } else {
         addToast(response.data?.message || 'Failed to submit bid', 'error');
@@ -290,7 +298,7 @@ export default function BidSubmission() {
             <div className="glass-card p-4 my-6 text-left space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Bid Reference:</span>
-                <span className="font-bold text-primary">{bidRef}</span>
+                <span className="font-bold text-primary">{submittedBidId}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Tender:</span>
@@ -380,10 +388,10 @@ export default function BidSubmission() {
                 />
                 I confirm my company meets all requirements for this tender
               </label>
-              {!canParticipate && (
+              {!canParticipate && complianceReason && (
                 <p className="text-xs text-red-500 flex items-center gap-1">
                   <AlertTriangle size={12} />
-                  You cannot proceed because you have expired documents.
+                  {complianceReason}
                 </p>
               )}
             </div>
