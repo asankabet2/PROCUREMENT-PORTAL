@@ -1,9 +1,6 @@
 import axios from 'axios';
 
-// Derive the API host from whatever host the app was loaded from, so the same
-// build works on the PC (localhost) and on a phone over the LAN (e.g.
-// http://192.168.1.42:8080 -> http://192.168.1.42:5001/api). An explicit
-// VITE_API_URL still wins if you ever need to point elsewhere.
+
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ||
   `http://${window.location.hostname}:5001/api`;
