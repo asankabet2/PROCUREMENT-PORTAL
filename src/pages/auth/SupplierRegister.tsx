@@ -306,7 +306,7 @@ export default function SupplierRegister() {
     }
   };
 
-  const uploadFiles = async (supplierId: string): Promise<boolean> => {
+  const uploadFiles = async (supplierId: string, uploadToken: string): Promise<boolean> => {
     setUploadingFiles(true);
     try {
       const docFormData = new FormData();
@@ -317,7 +317,7 @@ export default function SupplierRegister() {
       for (const [docType, expiryDate] of Object.entries(documentExpiries)) {
         if (expiryDate) docFormData.append(`${docType}Expiry`, expiryDate);
       }
-      if (hasFiles) await uploadSupplierDocuments(supplierId, docFormData);
+      if (hasFiles) await uploadSupplierDocuments(supplierId, docFormData, uploadToken);
 
       const validExperiences = experiences.filter(exp => exp.company && exp.proofFile);
       if (validExperiences.length > 0) {
@@ -329,7 +329,7 @@ export default function SupplierRegister() {
           expIndex++;
         }
         expFormData.append('experienceCount', expIndex.toString());
-        await uploadSupplierExperiences(supplierId, expFormData);
+        await uploadSupplierExperiences(supplierId, expFormData, uploadToken);
       }
       return true;
     } catch (error) {
@@ -428,10 +428,10 @@ export default function SupplierRegister() {
       });
 
       const data = response.data;
-      if (response.status === 201) {
-        setGeneratedSupplierId(data.supplierId);
-        if (data.supplierId) {
-          const uploadSuccess = await uploadFiles(data.supplierId);
+        if (response.status === 201) {
+          setGeneratedSupplierId(data.supplierId);
+          if (data.supplierId) {
+            const uploadSuccess = await uploadFiles(data.supplierId, data.uploadToken);
           if (!uploadSuccess) {
             addToast('Registration successful but some documents failed to upload. You can upload them later from your profile.', 'error');
           }

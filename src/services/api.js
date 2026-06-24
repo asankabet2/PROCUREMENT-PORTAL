@@ -69,14 +69,20 @@ export const updateSupplierStatus = (id, data) => api.patch(`/suppliers/${id}/st
 export const generateRegistrationNumber = () => api.get('/suppliers/generate-registration-number');
 export const registerSupplier = (data)       => api.post('/suppliers/register', data);
 
-export const uploadSupplierDocuments = (supplierId, formData) =>
+export const uploadSupplierDocuments = (supplierId, formData, uploadToken) =>
   api.post(`/suppliers/${supplierId}/upload-documents`, formData, {
-    headers: { 'Content-Type': null },
+    headers: {
+      'Content-Type': null,
+      Authorization: `Bearer ${uploadToken}`,
+    },
   });
 
-export const uploadSupplierExperiences = (supplierId, formData) =>
+export const uploadSupplierExperiences = (supplierId, formData, uploadToken) =>
   api.post(`/suppliers/${supplierId}/upload-experiences`, formData, {
-    headers: { 'Content-Type': null },
+    headers: {
+      'Content-Type': null,
+      Authorization: `Bearer ${uploadToken}`,
+    },
   });
 
 // ============ SUPPLIER DOCUMENTS ============
@@ -86,6 +92,7 @@ export const renewDocument = (supplierId, docType, formData) =>
   api.post(`/suppliers/${supplierId}/documents/${docType}/renew`, formData, {
     headers: { 'Content-Type': null },
   });
+  
 // Get single bid by ID with its items
 export const getBidById = (bidId) => api.get(`/bids/${bidId}`);
 
