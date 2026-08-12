@@ -7,16 +7,7 @@ interface ModalPortalProps {
     children: ReactNode;
 }
 
-/**
- * Renders its children in a centered overlay attached to document.body via a
- * portal. This is important: several cards in the app use `backdrop-filter`
- * (glass-card), which makes them a containing block for position:fixed
- * descendants — a modal nested inside such a card gets clipped by the card's
- * overflow instead of covering the viewport. Portalling to <body> avoids that.
- *
- * The child should be the modal panel itself (e.g. a `relative ... bg-background`
- * box); this wrapper supplies the backdrop, centering, Esc-to-close and scroll lock.
- */
+
 export default function ModalPortal({ open, onClose, children }: ModalPortalProps) {
     useEffect(() => {
         if (!open) return;

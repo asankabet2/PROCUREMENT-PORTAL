@@ -97,7 +97,7 @@ export default function LandingPage() {
                   Management
                 </h2>
                 <p className="text-muted-foreground text-lg leading-relaxed">
-                  Manage tenders, evaluate bids, and oversee supplier relationships — all from one powerful dashboard.
+                  Manage tenders, evaluate bids, and oversee supplier relationships all from one powerful dashboard.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">

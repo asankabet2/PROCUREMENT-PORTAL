@@ -5,7 +5,7 @@ import StatusBadge from '@/components/StatusBadge';
 import EmptyState from '@/components/EmptyState';
 import { formatDate, formatCurrency } from '@/utils/helpers';
 import { useNotification } from '@/context/NotificationContext';
-import { CheckCircle, XCircle, Eye, Loader2, AlertTriangle, RefreshCw, Clock } from 'lucide-react';
+import { CheckCircle, XCircle, Eye, Loader2, AlertTriangle, RefreshCw, Clock, FileText, Bell } from 'lucide-react';
 import { getSupplierById, getSupplierDocuments, getBidsBySupplier, getTenders, updateSupplierStatus, getCategories, fetchDocument } from '@/services/api';
 
 interface Category { id: string; name: string; description?: string; }
@@ -266,9 +266,24 @@ export default function SupplierDetail() {
               <span className="font-semibold">Document Attention Required</span>
             </div>
             <div className="space-y-1 text-sm">
-              {pendingDocuments.length > 0  && <p>📄 {pendingDocuments.length} document(s) pending verification</p>}
-              {expiredDocuments.length > 0  && <p>⚠️ {expiredDocuments.length} document(s) have EXPIRED</p>}
-              {expiringDocuments.length > 0 && <p>🔔 {expiringDocuments.length} document(s) are expiring soon</p>}
+              {pendingDocuments.length > 0 && (
+                <p className="flex items-center gap-1.5">
+                  <FileText className="h-4 w-4 text-gray-500" />
+                  {pendingDocuments.length} document(s) pending verification
+                </p>
+              )}
+              {expiredDocuments.length > 0 && (
+                <p className="flex items-center gap-1.5 text-red-600">
+                  <AlertTriangle className="h-4 w-4" />
+                  {expiredDocuments.length} document(s) have EXPIRED
+                </p>
+              )}
+              {expiringDocuments.length > 0 && (
+                <p className="flex items-center gap-1.5 text-amber-600">
+                  <Bell className="h-4 w-4" />
+                  {expiringDocuments.length} document(s) are expiring soon
+                </p>
+              )}
             </div>
           </div>
         )}
