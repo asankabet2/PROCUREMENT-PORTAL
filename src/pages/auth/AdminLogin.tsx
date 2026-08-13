@@ -103,7 +103,7 @@ export default function AdminLogin() {
                 type="email" 
                 value={email} 
                 onChange={e => setEmail(e.target.value)} 
-                placeholder="admin@hms.gov.gh"
+                placeholder="example@email.com"
                 className="w-full px-3 py-2.5 bg-muted/50 border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all" 
                 disabled={loading}
               />
@@ -155,9 +155,6 @@ export default function AdminLogin() {
               {loading ? 'Signing In...' : 'Sign In'}
             </button>
             
-            <p className="text-center text-xs text-muted-foreground">
-              Demo: admin@hms.gov.gh / Admin@1234
-            </p>
           </form>
           
           <p className="text-center text-sm text-muted-foreground mt-4">

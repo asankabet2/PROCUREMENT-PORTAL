@@ -118,9 +118,6 @@ export default function SupplierLogin() {
             {loading ? 'Signing In...' : 'Sign In'}
           </button>
 
-          <p className="text-center text-xs text-muted-foreground">
-            Demo: jamesdaniel@gmail.com / Same as password
-          </p>
         </form>
 
         <p className="text-center text-sm text-muted-foreground mt-4">
