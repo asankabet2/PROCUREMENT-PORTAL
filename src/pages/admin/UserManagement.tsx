@@ -146,9 +146,9 @@ export default function UserManagement() {
                   <td className="p-3"><StatusBadge status={u.status as any} /></td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
-                      <button className="p-1.5 rounded hover:bg-muted/50" title="Edit">
+                      {/* <button className="p-1.5 rounded hover:bg-muted/50" title="Edit">
                         <Edit size={14} />
-                      </button>
+                      </button> */}
                       <button 
                         onClick={() => setDeleteId(u.id)} 
                         className="p-1.5 rounded hover:bg-destructive/20 text-destructive" 

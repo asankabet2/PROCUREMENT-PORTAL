@@ -48,12 +48,9 @@ export default function ChangePasswordModal({
       await changePassword({ currentPassword, newPassword });
       
       addToast('Password changed successfully!', 'success');
-      
-      if (onSuccess) {
-        onSuccess();
-      } else {
-        onClose();
-      }
+
+      onClose();
+      onSuccess?.();
     } catch (error: any) {
       addToast(error.response?.data?.message || 'Failed to change password', 'error');
     } finally {
