@@ -4,10 +4,10 @@ import StatusBadge from '@/components/StatusBadge';
 import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
 import { formatDate } from '@/utils/helpers';
-import { getSupplierById, getSupplierDocuments, renewDocument, fetchDocument } from '@/services/api';
-import { Eye, Loader2, FileText, AlertTriangle, RefreshCw, Clock, CheckCircle } from 'lucide-react';
+import { getSupplierById, getSupplierDocuments, getMissingDocuments, renewDocument, fetchDocument } from '@/services/api';
+import { Eye, Loader2, FileText, AlertTriangle, RefreshCw, Clock, CheckCircle, Upload } from 'lucide-react';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types 
 
 type ExpiryStatus = 'expired' | 'critical' | 'warning' | 'valid' | 'permanent';
 
@@ -23,13 +23,19 @@ interface Document {
   rejectionReason?: string;
 }
 
+interface MissingDocument {
+  docType: string;
+  name: string;
+  requiresExpiry: boolean;
+}
+
 interface Supplier {
   id: string;
   companyName: string;
   documents: Document[];
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers 
 
 /**
  * Compute expiry status purely from the document data.
@@ -73,12 +79,13 @@ function getExpiryIcon(status: ExpiryStatus) {
   }
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// ── Main Component 
 
 export default function SupplierDocuments() {
   const { user } = useAuth();
   const { addToast } = useNotification();
   const [supplier, setSupplier] = useState<Supplier | null>(null);
+  const [missingDocuments, setMissingDocuments] = useState<MissingDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [viewingDoc, setViewingDoc] = useState<string | null>(null);
@@ -87,20 +94,23 @@ export default function SupplierDocuments() {
   const [renewalExpiryDate, setRenewalExpiryDate] = useState<string>('');
   const [showRenewalModal, setShowRenewalModal] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
+  const [modalMode, setModalMode] = useState<'renew' | 'upload'>('renew');
 
   useEffect(() => {
     const fetchAllData = async () => {
       if (!user?.id) return;
       setLoading(true);
       try {
-        const [supplierRes, docsRes] = await Promise.all([
+        const [supplierRes, docsRes, missingRes] = await Promise.all([
           getSupplierById(user.id),
           getSupplierDocuments(user.id),
+          getMissingDocuments(user.id),
         ]);
         setSupplier({
           ...supplierRes.data,
           documents: docsRes.data || [],
         });
+        setMissingDocuments(missingRes.data || []);
       } catch (err) {
         console.error('Error fetching data:', err);
         setError('Failed to load data');
@@ -111,18 +121,22 @@ export default function SupplierDocuments() {
     fetchAllData();
   }, [user?.id]);
 
-  // ── Refresh documents only (used after renewal) ───────────────────────────
+  // ── Refresh documents + missing list (used after renewal/upload) 
   const refreshDocuments = async () => {
     if (!user?.id) return;
     try {
-      const docsRes = await getSupplierDocuments(user.id);
+      const [docsRes, missingRes] = await Promise.all([
+        getSupplierDocuments(user.id),
+        getMissingDocuments(user.id),
+      ]);
       setSupplier(prev => prev ? { ...prev, documents: docsRes.data || [] } : null);
+      setMissingDocuments(missingRes.data || []);
     } catch (err) {
       console.error('Error refreshing documents:', err);
     }
   };
 
-  // ── View document ─────────────────────────────────────────────────────────
+  // ── View document 
   const handleView = async (doc: Document) => {
     if (!doc.fileName) {
       addToast('Document path not found. Please contact support.', 'error');
@@ -147,15 +161,32 @@ export default function SupplierDocuments() {
     }
   };
 
-  // ── Open renewal modal ────────────────────────────────────────────────────
+  // Open renewal modal (existing document, expiring/expired/rejected) 
   const handleRenew = (doc: Document) => {
     setSelectedDocument(doc);
+    setModalMode('renew');
     setRenewalFile(null);
     setRenewalExpiryDate('');
     setShowRenewalModal(true);
   };
 
-  // ── Submit renewal ────────────────────────────────────────────────────────
+  // ── Open upload modal (document never submitted at all) 
+  const handleUploadMissing = (missing: MissingDocument) => {
+    setSelectedDocument({
+      name: missing.name,
+      fileName: '',
+      docType: missing.docType,
+      status: 'Pending',
+      uploadDate: '',
+      requiresExpiry: missing.requiresExpiry,
+    });
+    setModalMode('upload');
+    setRenewalFile(null);
+    setRenewalExpiryDate('');
+    setShowRenewalModal(true);
+  };
+
+  // ── Submit renewal or upload 
   const handleRenewalSubmit = async () => {
     if (!selectedDocument || !renewalFile) {
       addToast('Please select a file to upload', 'error');
@@ -176,21 +207,25 @@ export default function SupplierDocuments() {
       formData.append('document', renewalFile);
       if (renewalExpiryDate) formData.append('expiryDate', renewalExpiryDate);
 
-      // renewDocument from api.ts → POST /api/suppliers/:supplierId/documents/:docType/renew
+      // Same endpoint for both — /renew already handles a docType with
+      // zero existing entries (nothing to mark 'Replaced', new one still pushed)
       await renewDocument(user!.id, selectedDocument.docType, formData);
 
-      addToast('Document renewed successfully!', 'success');
+      addToast(
+        modalMode === 'upload' ? 'Document uploaded successfully!' : 'Document renewed successfully!',
+        'success'
+      );
       setShowRenewalModal(false);
       await refreshDocuments();
     } catch (err: any) {
-      console.error('Error renewing document:', err);
-      addToast(err.response?.data?.message || 'Failed to renew document. Please try again.', 'error');
+      console.error('Error submitting document:', err);
+      addToast(err.response?.data?.message || 'Failed to submit document. Please try again.', 'error');
     } finally {
       setRenewingDoc(null);
     }
   };
 
-  // ── Loading / error / empty states ────────────────────────────────────────
+  // ── Loading / error states 
 
   if (loading) {
     return (
@@ -210,7 +245,9 @@ export default function SupplierDocuments() {
     );
   }
 
-  if (!supplier || !supplier.documents || supplier.documents.length === 0) {
+  // Only show the fully-empty state if there's truly nothing to act on —
+  // no uploaded documents AND nothing missing to prompt for.
+  if (!supplier || (supplier.documents.length === 0 && missingDocuments.length === 0)) {
     return (
       <PortalLayout type="supplier" title="Documents" breadcrumb={['Supplier', 'Documents']}>
         <div className="glass-card p-8 text-center">
@@ -224,7 +261,7 @@ export default function SupplierDocuments() {
     );
   }
 
-  // ── Categorise using computed expiry status ───────────────────────────────
+  // ── Categorise using computed expiry status 
 
   const rejectedDocuments = supplier.documents.filter(d => d.status === 'Rejected');
   const expiredDocuments  = supplier.documents.filter(d =>
@@ -242,32 +279,68 @@ export default function SupplierDocuments() {
       <div className="space-y-6 animate-fade-in max-w-3xl">
 
         {/* Warning banner */}
-        {(expiringDocuments.length > 0 || expiredDocuments.length > 0 || rejectedDocuments.length > 0) && (
+        {(missingDocuments.length > 0 || expiringDocuments.length > 0 || expiredDocuments.length > 0 || rejectedDocuments.length > 0) && (
           <div className="p-4 rounded-xl border bg-yellow-500/10 border-yellow-500/30">
             <div className="flex items-center gap-2 text-yellow-600 mb-2">
               <AlertTriangle size={20} />
               <span className="font-semibold">Document Action Required</span>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <div className="text-sm text-muted-foreground space-y-1">
+              {missingDocuments.length > 0 && (
+                <p className="flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-red-500 shrink-0" />
+                  {missingDocuments.length} required document(s) have not been submitted yet.
+                </p>
+              )}
               {rejectedDocuments.length > 0 && (
-                <span className="block">
-                  ⚠️ {rejectedDocuments.length} document(s) were REJECTED. Please re-upload them.
-                </span>
+                <p className="flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-red-500 shrink-0" />
+                  {rejectedDocuments.length} document(s) were rejected. Please re-upload them.
+                </p>
               )}
               {expiredDocuments.length > 0 && (
-                <span className="block">
-                  ⚠️ {expiredDocuments.length} document(s) have EXPIRED. Please renew immediately.
-                </span>
+                <p className="flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-red-500 shrink-0" />
+                  {expiredDocuments.length} document(s) have expired. Please renew immediately.
+                </p>
               )}
               {expiringDocuments.length > 0 && (
-                <span className="block">
-                  ⚠️ {expiringDocuments.length} document(s) are expiring soon. Please renew to maintain your active status.
-                </span>
+                <p className="flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-yellow-500 shrink-0" />
+                  {expiringDocuments.length} document(s) are expiring soon. Please renew to maintain your active status.
+                </p>
               )}
-            </p>
+            </div>
           </div>
         )}
-        
+
+        {/* Not yet uploaded — only visible to suppliers who actually have something missing */}
+        {missingDocuments.length > 0 && (
+          <div className="glass-card overflow-hidden border-red-500/30">
+            <div className="p-4 border-b border-border bg-red-500/5">
+              <h3 className="font-bold text-red-600 flex items-center gap-2">
+                <AlertTriangle size={16} />
+                Documents Not Yet Uploaded
+              </h3>
+            </div>
+            {missingDocuments.map((m) => (
+              <MissingDocumentRow
+                key={m.docType}
+                missing={m}
+                renewingDoc={renewingDoc}
+                onUpload={handleUploadMissing}
+              />
+            ))}
+            <div className="p-4 bg-muted/20 border-t border-border">
+              <p className="text-xs text-muted-foreground">
+                These are required for your registration but weren't received on our end — this can
+                sometimes happen if an upload didn't fully go through. Please upload them below to
+                complete your profile.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Rejected */}
         {rejectedDocuments.length > 0 && (
           <div className="glass-card overflow-hidden border-red-500/30">
@@ -334,8 +407,6 @@ export default function SupplierDocuments() {
           </div>
         )}
 
-        
-
         {/* Valid */}
         {validDocuments.length > 0 && (
           <div className="glass-card overflow-hidden">
@@ -361,12 +432,14 @@ export default function SupplierDocuments() {
           </div>
         )}
 
-        {/* Renewal modal */}
+        {/* Renewal / Upload modal */}
         {showRenewalModal && selectedDocument && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="bg-background rounded-xl shadow-xl w-full max-w-md">
               <div className="flex items-center justify-between p-6 border-b border-border">
-                <h2 className="text-lg font-bold">Renew Document</h2>
+                <h2 className="text-lg font-bold">
+                  {modalMode === 'upload' ? 'Upload Document' : 'Renew Document'}
+                </h2>
                 <button
                   onClick={() => setShowRenewalModal(false)}
                   className="text-muted-foreground hover:text-foreground"
@@ -380,19 +453,28 @@ export default function SupplierDocuments() {
                   <label className="block text-sm font-medium mb-2">
                     Document: <span className="font-bold">{selectedDocument.name}</span>
                   </label>
-                  <p className="text-xs text-muted-foreground">
-                    Current version uploaded: {formatDate(selectedDocument.uploadDate)}
-                  </p>
-                  {selectedDocument.expiryDate && (
-                    <p className="text-xs text-red-500 mt-1">
-                      Current expiry date: {formatDate(selectedDocument.expiryDate)}
+                  {modalMode === 'renew' && (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        Current version uploaded: {formatDate(selectedDocument.uploadDate)}
+                      </p>
+                      {selectedDocument.expiryDate && (
+                        <p className="text-xs text-red-500 mt-1">
+                          Current expiry date: {formatDate(selectedDocument.expiryDate)}
+                        </p>
+                      )}
+                    </>
+                  )}
+                  {modalMode === 'upload' && (
+                    <p className="text-xs text-muted-foreground">
+                      This document hasn't been submitted yet — upload it below.
                     </p>
                   )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium mb-2">
-                    New Document File <span className="text-red-500">*</span>
+                    {modalMode === 'upload' ? 'Document File' : 'New Document File'} <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="file"
@@ -408,7 +490,7 @@ export default function SupplierDocuments() {
                 {selectedDocument.requiresExpiry && (
                   <div>
                     <label className="block text-sm font-medium mb-2">
-                      New Expiry Date <span className="text-red-500">*</span>
+                      {modalMode === 'upload' ? 'Expiry Date' : 'New Expiry Date'} <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="date"
@@ -418,7 +500,7 @@ export default function SupplierDocuments() {
                       className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-sm"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                      Enter the expiry date shown on the new certificate
+                      Enter the expiry date shown on the certificate
                     </p>
                   </div>
                 )}
@@ -442,10 +524,12 @@ export default function SupplierDocuments() {
                 >
                   {renewingDoc === selectedDocument.name ? (
                     <Loader2 size={14} className="animate-spin" />
+                  ) : modalMode === 'upload' ? (
+                    <Upload size={14} />
                   ) : (
                     <RefreshCw size={14} />
                   )}
-                  Submit Renewal
+                  {modalMode === 'upload' ? 'Submit Upload' : 'Submit Renewal'}
                 </button>
               </div>
             </div>
@@ -464,7 +548,41 @@ export default function SupplierDocuments() {
   );
 }
 
-// ── Document Row ──────────────────────────────────────────────────────────────
+// ── Missing Document Row 
+
+function MissingDocumentRow({
+  missing,
+  renewingDoc,
+  onUpload,
+}: {
+  missing: MissingDocument;
+  renewingDoc: string | null;
+  onUpload: (missing: MissingDocument) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between p-4 border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors bg-red-500/5">
+      <div className="flex-1">
+        <p className="text-sm font-medium">{missing.name}</p>
+        <p className="text-xs text-red-500 mt-1">Required — not submitted</p>
+      </div>
+      <button
+        onClick={() => onUpload(missing)}
+        disabled={renewingDoc === missing.name}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors text-sm"
+        title="Upload document"
+      >
+        {renewingDoc === missing.name ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : (
+          <Upload size={14} />
+        )}
+        Upload
+      </button>
+    </div>
+  );
+}
+
+// ── Document Row 
 
 function DocumentRow({
   doc,

@@ -88,6 +88,9 @@ export const uploadSupplierExperiences = (supplierId, formData, uploadToken) =>
 // ============ SUPPLIER DOCUMENTS ============
 export const getSupplierDocuments = (supplierId) => api.get(`/suppliers/${supplierId}/documents`);
 
+export const getMissingDocuments = (supplierId) => api.get(`/suppliers/${supplierId}/documents/missing`);
+
+
 export const renewDocument = (supplierId, docType, formData) =>
   api.post(`/suppliers/${supplierId}/documents/${docType}/renew`, formData, {
     headers: { 'Content-Type': null },
