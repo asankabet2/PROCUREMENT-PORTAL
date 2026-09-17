@@ -1,73 +1,171 @@
-# React + TypeScript + Vite
+# Procurement Management Portal
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern procurement and tender management platform built with React, TypeScript, and Vite. The application supports both admin and supplier workflows for managing tenders, bids, supplier verification, notifications, and reporting.
 
-Currently, two official plugins are available:
+## Overview
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+This project provides a web-based portal for:
 
-## React Compiler
+- Admin teams to manage tenders, supplier approvals, evaluation criteria, and awards
+- Suppliers to browse opportunities, submit bids, upload required documents, and track status
+- Real-time document and notification workflows for procurement operations
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The app is structured as a front-end client that communicates with a backend API and optionally leverages Supabase for storage and related services.
 
-## Expanding the ESLint configuration
+## Features
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Admin capabilities
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- Tender creation, editing, and lifecycle management
+- Supplier management and document verification
+- Bid review and award tracking
+- Evaluation criteria configuration
+- Reports, analytics, and dashboard summaries
+- User and notification management
+- Audit-friendly document and compliance workflows
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Supplier capabilities
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- Supplier registration and login
+- Browse open tenders
+- Submit bids and supporting documentation
+- View bid status and tender details
+- Upload and renew compliance documents
+- Receive notifications and manage supplier profile
+
+## Tech Stack
+
+- React 18
+- TypeScript
+- Vite
+- Tailwind CSS
+- shadcn/ui component patterns
+- React Router
+- TanStack Query
+- Axios
+- Supabase client
+- Recharts and XLSX for reporting/data handling
+
+## Project Structure
+
+```text
+.
+├── public/
+├── src/
+│   ├── components/
+│   ├── context/
+│   ├── hooks/
+│   ├── libs/
+│   ├── pages/
+│   ├── services/
+│   ├── App.tsx
+│   ├── main.tsx
+│   └── index.css
+├── .gitignore
+├── components.json
+├── eslint.config.js
+├── index.html
+├── netlify.toml
+├── package.json
+├── tailwind.config.ts
+├── tsconfig.json
+├── vite.config.ts
+├── vitest.config.ts
+└── README.md
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Prerequisites
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Before running the app, make sure you have:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- Node.js 18 or newer
+- npm or another package manager
+- A working backend API service for procurement data
+- Supabase environment values if you are using Supabase features locally
+
+## Environment Variables
+
+Create a `.env.local` file in the root of the project and add the following values:
+
+```env
+VITE_API_URL=http://localhost:5001/api
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
+
+> Note: The frontend expects a backend API to handle authentication, tender data, bids, suppliers, and document processing.
+
+## Installation
+
+```bash
+npm install
+```
+
+## Running the App
+
+```bash
+npm run dev
+```
+
+The app will start in development mode and usually be available at:
+
+```text
+http://localhost:5173
+```
+
+## Available Scripts
+
+```bash
+npm run dev       # Start Vite dev server
+npm run build     # Build the production bundle
+npm run preview   # Preview the production build locally
+npm run lint      # Run ESLint checks
+npm run test      # Run Vitest test suite
+npm run test:watch # Watch tests during development
+```
+
+## Application Routes
+
+### Public routes
+
+- `/` – landing page
+- `/admin/login` – admin sign-in
+- `/supplier/login` – supplier sign-in
+- `/supplier/register` – supplier registration
+- `/reset-password` – password reset flow
+
+### Admin routes
+
+- `/admin/dashboard`
+- `/admin/tenders`
+- `/admin/tenders/:id`
+- `/admin/suppliers`
+- `/admin/users`
+- `/admin/reports`
+- `/admin/settings`
+- `/admin/notifications`
+
+### Supplier routes
+
+- `/supplier/dashboard`
+- `/supplier/tenders`
+- `/supplier/tenders/:id`
+- `/supplier/bids`
+- `/supplier/profile`
+- `/supplier/documents`
+- `/supplier/notifications`
+
+## Deployment
+
+This project includes a Netlify configuration and is suitable for deployment as a static frontend application.
+
+## Notes
+
+- The repository contains the frontend client, not the backend API service.
+- Secure procurement flows and access control should be enforced by the backend and API configuration.
+- For production deployments, ensure environment variables are set correctly and API auth tokens are managed securely.
+
+## License
+
+This project currently does not include a custom license file. If you plan to distribute or deploy it publicly, add an appropriate license before release.
+
