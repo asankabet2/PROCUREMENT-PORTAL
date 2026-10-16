@@ -16,6 +16,9 @@ interface BidItem {
   quantity: number;
   unitPrice: number;
   total: number;
+  countryOfOrigin?: string | null;
+  packSize?: string | null;
+  expiryDate?: string | null;
 }
 
 interface Bid {
@@ -37,7 +40,7 @@ export default function SupplierBidDetails() {
   const { user } = useAuth();
   const { addToast } = useNotification();
   const navigate = useNavigate();
-  
+
   const [bid, setBid] = useState<Bid | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -94,7 +97,7 @@ export default function SupplierBidDetails() {
 
   const handleDownloadReceipt = async () => {
     if (!bidId) return;
-    
+
     setDownloading(true);
     try {
       await downloadBidReceipt(bidId);
@@ -109,7 +112,7 @@ export default function SupplierBidDetails() {
   // Improved status config
   const getStatusConfig = (status: string) => {
     const s = status?.toLowerCase() || '';
-    
+
     if (s.includes('award') || s === 'bs002') {
       return {
         icon: <Award size={16} className="text-success" />,
@@ -117,7 +120,7 @@ export default function SupplierBidDetails() {
         label: 'Awarded'
       };
     }
-    if (s.includes('reject') || s === 'BS003') {
+    if (s.includes('reject') || s === 'bs003') {
       return {
         icon: <XCircle size={16} className="text-destructive" />,
         color: 'bg-destructive/10 text-destructive border-destructive/30',
@@ -129,6 +132,13 @@ export default function SupplierBidDetails() {
       color: 'bg-warning/10 text-warning border-warning/30',
       label: 'Submitted'
     };
+  };
+
+  // Show a date-only value (YYYY-MM-DD from SQL DATE) without timezone shifting
+  const displayExpiry = (value?: string | null) => {
+    if (!value) return '-';
+    const d = String(value).slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : formatDate(value);
   };
 
   if (loading) {
@@ -144,9 +154,9 @@ export default function SupplierBidDetails() {
   if (error || !bid) {
     return (
       <PortalLayout type="supplier" title="Bid Not Found" breadcrumb={['Supplier', 'Bids']}>
-        <EmptyState 
-          title="Bid Not Found" 
-          description={error || "This bid doesn't exist or you don't have permission to view it."} 
+        <EmptyState
+          title="Bid Not Found"
+          description={error || "This bid doesn't exist or you don't have permission to view it."}
         />
       </PortalLayout>
     );
@@ -162,7 +172,7 @@ export default function SupplierBidDetails() {
 
   return (
     <PortalLayout type="supplier" title={`Bid: ${bid.bidId}`} breadcrumb={['Supplier', 'Bids', bid.bidId]}>
-      <div className="space-y-6 max-w-5xl">
+      <div className="space-y-6 max-w-6xl">
 
         {/* Back to My Bids */}
         <button
@@ -253,8 +263,11 @@ export default function SupplierBidDetails() {
                   <th className="text-left p-4">Item Code</th>
                   <th className="text-left p-4">Description</th>
                   <th className="text-left p-4">Unit</th>
-                  <th className="text-right p-4">Avg Bid Qty</th>
-                  <th className="text-right p-4">Bid Unit Price</th>
+                  <th className="text-right p-4">Qty</th>
+                  <th className="text-left p-4">Country of Origin</th>
+                  <th className="text-left p-4">Pack Size</th>
+                  <th className="text-left p-4">Expiry Date</th>
+                  <th className="text-right p-4">Unit Price</th>
                   <th className="text-right p-4">Total</th>
                 </tr>
               </thead>
@@ -265,7 +278,10 @@ export default function SupplierBidDetails() {
                     <td className="p-4 font-mono text-xs">{item.tenderItemId}</td>
                     <td className="p-4">{item.description}</td>
                     <td className="p-4">{item.unit}</td>
-                    <td className="p-4 text-right">{item.quantity.toLocaleString()}</td>
+                    <td className="p-4 text-right">{Number(item.quantity).toLocaleString()}</td>
+                    <td className="p-4">{item.countryOfOrigin || '-'}</td>
+                    <td className="p-4">{item.packSize || '-'}</td>
+                    <td className="p-4 whitespace-nowrap">{displayExpiry(item.expiryDate)}</td>
                     <td className="p-4 text-right">{formatCurrency(item.unitPrice)}</td>
                     <td className="p-4 text-right font-medium">{formatCurrency(item.total)}</td>
                   </tr>
@@ -273,7 +289,7 @@ export default function SupplierBidDetails() {
               </tbody>
               <tfoot>
                 <tr className="bg-muted/50">
-                  <td colSpan={6} className="p-4 text-right font-bold text-lg">Grand Total</td>
+                  <td colSpan={9} className="p-4 text-right font-bold text-lg">Grand Total</td>
                   <td className="p-4 text-right font-bold text-xl text-primary">
                     {formatCurrency(bid.grandTotal)}
                   </td>
