@@ -6,7 +6,7 @@ import EmptyState from '@/components/EmptyState';
 import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
 import { getTenderById, getSupplierById, submitBid } from '@/services/api';
-import { formatCurrency} from '@/utils/helpers';
+import { formatCurrency } from '@/utils/helpers';
 import { CheckCircle, Download, Loader2, AlertTriangle } from 'lucide-react';
 import ExpiredDocumentsWarning from '@/components/ExpiredDocumentsWarning';
 import { useSupplierCompliance } from '@/hooks/useSupplierCompliance';
@@ -15,7 +15,7 @@ const steps = ['Confirm Eligibility', 'Price Items', 'Review & Submit'];
 
 interface TenderItem {
   itemNo: number;
-  tenderItemId: string ;
+  tenderItemId: string;
   description: string;
   unit: string;
   quantity: number;
@@ -42,12 +42,29 @@ interface Supplier {
   email: string;
 }
 
-// Tracks whether the supplier is bidding on the item, plus quantity and unit price
+// Bid quantity is NOT entered by the supplier; it always equals the tender quantity
 interface ItemEntry {
   included: boolean;
-  quantity: number;
   unitPrice: number;
+  countryOfOrigin: string;
+  packSize: string;
+  expiryDate: string; // YYYY-MM-DD
 }
+
+const DEFAULT_ENTRY: ItemEntry = {
+  included: true,
+  unitPrice: 0,
+  countryOfOrigin: '',
+  packSize: '',
+  expiryDate: '',
+};
+
+const todayStr = () => new Date().toISOString().split('T')[0];
+const tomorrowStr = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split('T')[0];
+};
 
 export default function BidSubmission() {
   const { id } = useParams();
@@ -62,7 +79,6 @@ export default function BidSubmission() {
   const [submitted, setSubmitted] = useState(false);
   const [submittedBidId, setSubmittedBidId] = useState<string>('');
   const [confirmed, setConfirmed] = useState(false);
-  // Now stores both quantity and unitPrice per itemNo
   const [itemEntries, setItemEntries] = useState<Record<number, ItemEntry>>({});
   const [finalConfirm, setFinalConfirm] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
@@ -153,28 +169,19 @@ export default function BidSubmission() {
     );
   }
 
-  // Helper to get entry for an item. Items are included by default so the
-  // existing "bid on everything" flow is preserved; suppliers can untick to skip.
-  const getEntry = (itemNo: number): ItemEntry =>
-    itemEntries[itemNo] || { included: true, quantity: 0, unitPrice: 0 };
+  // Items are included by default; suppliers can untick to skip.
+  const getEntry = (itemNo: number): ItemEntry => itemEntries[itemNo] || DEFAULT_ENTRY;
 
-  const updateEntry = (itemNo: number, field: 'quantity' | 'unitPrice', value: number) => {
-    setItemEntries((prev) => {
-      const item = tender?.items.find(i => i.itemNo === itemNo);
-      let clamped = value;
-      if (field === 'quantity' && item) {
-        clamped = Math.min(value, item.quantity);
-      }
-      return {
-        ...prev,
-        [itemNo]: { ...getEntry(itemNo), [field]: clamped },
-      };
-    });
+  const updateEntry = <K extends keyof ItemEntry>(itemNo: number, field: K, value: ItemEntry[K]) => {
+    setItemEntries((prev) => ({
+      ...prev,
+      [itemNo]: { ...(prev[itemNo] || DEFAULT_ENTRY), [field]: value },
+    }));
   };
 
   const toggleIncluded = (itemNo: number) => {
     setItemEntries((prev) => {
-      const current = prev[itemNo] || { included: true, quantity: 0, unitPrice: 0 };
+      const current = prev[itemNo] || DEFAULT_ENTRY;
       return { ...prev, [itemNo]: { ...current, included: !current.included } };
     });
   };
@@ -182,14 +189,17 @@ export default function BidSubmission() {
   // Only the items the supplier chose to bid on
   const includedItems = tender.items.filter((i) => getEntry(i.itemNo).included);
 
-  // Build the final items array using supplier's entered quantity & price
+  // Bid quantity = tender quantity
   const items = includedItems.map((i) => {
     const entry = getEntry(i.itemNo);
     return {
       ...i,
-      supplierQuantity: entry.quantity,
+      supplierQuantity: i.quantity,
       unitPrice:        entry.unitPrice,
-      total:            entry.quantity * entry.unitPrice,
+      countryOfOrigin:  entry.countryOfOrigin.trim(),
+      packSize:         entry.packSize.trim(),
+      expiryDate:       entry.expiryDate,
+      total:            i.quantity * entry.unitPrice,
     };
   });
 
@@ -210,21 +220,31 @@ export default function BidSubmission() {
       if (includedItems.length === 0) {
         e.push('Select at least one item to bid on');
       } else {
-        const invalid = includedItems.filter((i) => {
-          const entry = getEntry(i.itemNo);
-          return entry.quantity <= 0 || entry.unitPrice <= 0;
+        const today = todayStr();
+
+        const badPrice = includedItems.filter((i) => !(getEntry(i.itemNo).unitPrice > 0));
+        const badDetails = includedItems.filter((i) => {
+          const en = getEntry(i.itemNo);
+          return !en.countryOfOrigin.trim() || !en.packSize.trim() || !en.expiryDate;
         });
-        if (invalid.length > 0) {
-          e.push(
-            `Enter a quantity and unit price for every selected item (check item ${invalid
-              .map((i) => i.itemNo)
-              .join(', ')})`
-          );
-          // Jump to the page holding the first incomplete item so it's visible
-          const firstInvalidIndex = tender.items.findIndex((t) => t.itemNo === invalid[0].itemNo);
-          if (firstInvalidIndex >= 0) {
-            setPricePage(Math.floor(firstInvalidIndex / PRICE_ITEMS_PER_PAGE) + 1);
-          }
+        const badExpiry = includedItems.filter((i) => {
+          const en = getEntry(i.itemNo);
+          return en.expiryDate && en.expiryDate <= today;
+        });
+
+        if (badPrice.length > 0)
+          e.push(`Enter a unit price for item ${badPrice.map((i) => i.itemNo).join(', ')}`);
+        if (badDetails.length > 0)
+          e.push(`Country of origin, pack size and expiry date are required for item ${badDetails.map((i) => i.itemNo).join(', ')}`);
+        if (badExpiry.length > 0)
+          e.push(`Expiry date must be in the future for item ${badExpiry.map((i) => i.itemNo).join(', ')}`);
+
+        // Jump to the page holding the first incomplete item so it's visible
+        const firstBad = [...badPrice, ...badDetails, ...badExpiry]
+          .sort((a, b) => a.itemNo - b.itemNo)[0];
+        if (firstBad) {
+          const idx = tender.items.findIndex((t) => t.itemNo === firstBad.itemNo);
+          if (idx >= 0) setPricePage(Math.floor(idx / PRICE_ITEMS_PER_PAGE) + 1);
         }
       }
     }
@@ -252,34 +272,35 @@ export default function BidSubmission() {
         tenderId:      tender.id,
         supplierId:    user?.id,
         items: items.map((item) => ({
-          itemNo:       item.itemNo,
-          tenderItemId: item.tenderItemId,
-          description:  item.description,
-          unit:         item.unit,
-          quantity:     item.supplierQuantity,   // supplier's qty
-          unitPrice:    item.unitPrice,
-          total:        item.total,
+          itemNo:          item.itemNo,
+          tenderItemId:    item.tenderItemId,
+          description:     item.description,
+          unit:            item.unit,
+          quantity:        item.supplierQuantity, // equals tender quantity
+          unitPrice:       item.unitPrice,
+          total:           item.total,
+          countryOfOrigin: item.countryOfOrigin,
+          packSize:        item.packSize,
+          expiryDate:      item.expiryDate,
         })),
         grandTotal,
         status:        'Submitted',
-        submittedDate: new Date().toISOString().split('T')[0],
+        submittedDate: todayStr(),
       };
 
       const response = await submitBid(bidData);
 
       if (response.status === 201) {
         setSubmitted(true);
-        setSubmittedBidId(response.data?.bidId);
+        setSubmittedBidId(response.data?.bid?.bidId || bidData.bidId);
         addToast('Bid submitted successfully!', 'success');
       } else {
         addToast(response.data?.message || 'Failed to submit bid', 'error');
       }
     } catch (error: any) {
       console.error('Error submitting bid:', error);
-      if (error.response?.status === 403) {
+      if (error.response?.status === 403 || error.response?.status === 400) {
         addToast(error.response?.data?.message || 'Failed to submit bid', 'error');
-      } else if (error.response?.status === 400) {
-        addToast(error.response?.data?.message || 'You have already submitted a bid for this tender', 'error');
       } else {
         addToast('Failed to submit bid. Please try again.', 'error');
       }
@@ -330,9 +351,12 @@ export default function BidSubmission() {
     );
   }
 
+  const inputBase =
+    'px-2 py-1.5 bg-muted/50 border border-border rounded text-sm outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed';
+
   return (
     <PortalLayout type="supplier" title={`Bid for ${tender.title}`} breadcrumb={['Supplier', 'Tenders', tender.id, 'Bid']}>
-      <div className="max-w-4xl mx-auto animate-fade-in">
+      <div className="max-w-6xl mx-auto animate-fade-in">
         {hasExpiredDocuments && (
           <div className="mb-4">
             <ExpiredDocumentsWarning expiredDocuments={expiredDocuments} type="bid" />
@@ -349,7 +373,7 @@ export default function BidSubmission() {
 
         <div className="glass-card p-6">
 
-          {/* Step 0 — Confirm Eligibility */}
+          {/* Step 0 - Confirm Eligibility */}
           {step === 0 && (
             <div className="space-y-4">
               <h2 className="text-lg font-bold">Confirm Eligibility</h2>
@@ -397,13 +421,13 @@ export default function BidSubmission() {
             </div>
           )}
 
-          {/* Step 1 — Price Items */}
+          {/* Step 1 - Price Items */}
           {step === 1 && (
             <div>
               <h2 className="text-lg font-bold mb-1">Price Your Items</h2>
               <p className="text-sm text-muted-foreground mb-4">
-                Tick the items you want to bid on, then enter the quantity you can supply and your
-                unit price. Untick any item you wish to skip.
+                Tick the items you want to bid on. Quantity is fixed to the requested quantity. Enter your
+                unit price, country of origin, pack size and expiry date for each item.
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -413,9 +437,11 @@ export default function BidSubmission() {
                       <th className="text-left p-3">#</th>
                       <th className="text-left p-3">Description</th>
                       <th className="text-center p-3">Unit</th>
-                      <th className="text-right p-3">Qty Requested</th>
-                      <th className="text-right p-3">Bid Qty</th>
-                      <th className="text-right p-3">Bid Unit Price (GHS)</th>
+                      <th className="text-right p-3">Qty</th>
+                      <th className="text-left p-3">Country of Origin</th>
+                      <th className="text-left p-3">Pack Size</th>
+                      <th className="text-left p-3">Expiry Date</th>
+                      <th className="text-right p-3">Unit Price (GHS)</th>
                       <th className="text-right p-3">Total</th>
                     </tr>
                   </thead>
@@ -423,7 +449,8 @@ export default function BidSubmission() {
                     {pagedPriceItems.map((item) => {
                       const entry = getEntry(item.itemNo);
                       const included = entry.included;
-                      const rowTotal = entry.quantity * entry.unitPrice;
+                      const rowTotal = item.quantity * entry.unitPrice;
+                      const disabled = !canParticipate || !included;
                       return (
                         <tr
                           key={item.itemNo}
@@ -442,25 +469,39 @@ export default function BidSubmission() {
                           <td className="p-3 text-muted-foreground">{item.itemNo}</td>
                           <td className="p-3">{item.description}</td>
                           <td className="p-3 text-center">{item.unit}</td>
-                          {/* Avg Qty Requested — read-only from tender */}
-                          <td className="p-3 text-right text-muted-foreground">{item.quantity}</td>
-                          {/* Supplier enters their own qty */}
+                          <td className="p-3 text-right font-medium">{item.quantity}</td>
                           <td className="p-3">
                             <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              max={item.quantity}
-                              placeholder="0"
-                              value={entry.quantity || ''}
-                              onChange={(e) =>
-                                updateEntry(item.itemNo, 'quantity', parseFloat(e.target.value) || 0)
-                              }
-                              className="w-24 ml-auto block px-2 py-1.5 bg-muted/50 border border-border rounded text-sm text-right outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                              disabled={!canParticipate || !included}
+                              type="text"
+                              placeholder="e.g. India"
+                              maxLength={100}
+                              value={entry.countryOfOrigin}
+                              onChange={(e) => updateEntry(item.itemNo, 'countryOfOrigin', e.target.value)}
+                              className={`w-32 ${inputBase}`}
+                              disabled={disabled}
                             />
                           </td>
-                          {/* Unit price input */}
+                          <td className="p-3">
+                            <input
+                              type="text"
+                              placeholder="e.g. 10 x 10 tabs"
+                              maxLength={100}
+                              value={entry.packSize}
+                              onChange={(e) => updateEntry(item.itemNo, 'packSize', e.target.value)}
+                              className={`w-32 ${inputBase}`}
+                              disabled={disabled}
+                            />
+                          </td>
+                          <td className="p-3">
+                            <input
+                              type="date"
+                              min={tomorrowStr()}
+                              value={entry.expiryDate}
+                              onChange={(e) => updateEntry(item.itemNo, 'expiryDate', e.target.value)}
+                              className={`w-36 ${inputBase}`}
+                              disabled={disabled}
+                            />
+                          </td>
                           <td className="p-3">
                             <input
                               type="number"
@@ -471,12 +512,12 @@ export default function BidSubmission() {
                               onChange={(e) =>
                                 updateEntry(item.itemNo, 'unitPrice', parseFloat(e.target.value) || 0)
                               }
-                              className="w-28 ml-auto block px-2 py-1.5 bg-muted/50 border border-border rounded text-sm text-right outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                              disabled={!canParticipate || !included}
+                              className={`w-28 ml-auto block text-right ${inputBase}`}
+                              disabled={disabled}
                             />
                           </td>
                           <td className="p-3 text-right font-medium">
-                            {included ? formatCurrency(rowTotal) : <span className="text-muted-foreground">—</span>}
+                            {included ? formatCurrency(rowTotal) : <span className="text-muted-foreground">-</span>}
                           </td>
                         </tr>
                       );
@@ -484,7 +525,7 @@ export default function BidSubmission() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-muted/30">
-                      <td colSpan={7} className="p-3 text-right font-bold">
+                      <td colSpan={9} className="p-3 text-right font-bold">
                         Grand Total ({includedItems.length} of {tender.items.length} items):
                       </td>
                       <td className="p-3 text-right font-bold text-lg">
@@ -523,7 +564,7 @@ export default function BidSubmission() {
             </div>
           )}
 
-          {/* Step 2 — Review & Submit */}
+          {/* Step 2 - Review & Submit */}
           {step === 2 && (
             <div className="space-y-4">
               <h2 className="text-lg font-bold">Review & Submit</h2>
@@ -533,36 +574,44 @@ export default function BidSubmission() {
                   Tender: {tender.title} ({tender.id})
                 </p>
               </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/30">
-                    <th className="text-left p-2">Description</th>
-                    <th className="text-center p-2">Unit</th>
-                    <th className="text-right p-2">Bid Qty</th>
-                    <th className="text-right p-2">Bid Unit Price (GHS)</th>
-                    <th className="text-right p-2">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((i) => (
-                    <tr key={i.itemNo} className="border-b border-border/50">
-                      <td className="p-2">{i.description}</td>
-                      <td className="p-2 text-center">{i.unit}</td>
-                      <td className="p-2 text-right">{i.supplierQuantity}</td>
-                      <td className="p-2 text-right">{formatCurrency(i.unitPrice)}</td>
-                      <td className="p-2 text-right">{formatCurrency(i.total)}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/30">
+                      <th className="text-left p-2">Description</th>
+                      <th className="text-center p-2">Unit</th>
+                      <th className="text-right p-2">Qty</th>
+                      <th className="text-left p-2">Country of Origin</th>
+                      <th className="text-left p-2">Pack Size</th>
+                      <th className="text-left p-2">Expiry Date</th>
+                      <th className="text-right p-2">Unit Price (GHS)</th>
+                      <th className="text-right p-2">Total</th>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="bg-muted/30">
-                    <td colSpan={4} className="p-2 text-right font-bold">
-                      Grand Total:
-                    </td>
-                    <td className="p-2 text-right font-bold">{formatCurrency(grandTotal)}</td>
-                  </tr>
-                </tfoot>
-              </table>
+                  </thead>
+                  <tbody>
+                    {items.map((i) => (
+                      <tr key={i.itemNo} className="border-b border-border/50">
+                        <td className="p-2">{i.description}</td>
+                        <td className="p-2 text-center">{i.unit}</td>
+                        <td className="p-2 text-right">{i.supplierQuantity}</td>
+                        <td className="p-2">{i.countryOfOrigin}</td>
+                        <td className="p-2">{i.packSize}</td>
+                        <td className="p-2">{i.expiryDate}</td>
+                        <td className="p-2 text-right">{formatCurrency(i.unitPrice)}</td>
+                        <td className="p-2 text-right">{formatCurrency(i.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-muted/30">
+                      <td colSpan={7} className="p-2 text-right font-bold">
+                        Grand Total:
+                      </td>
+                      <td className="p-2 text-right font-bold">{formatCurrency(grandTotal)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
               <label
                 className={`flex items-center gap-2 text-sm p-3 rounded-lg border ${
                   !canParticipate
