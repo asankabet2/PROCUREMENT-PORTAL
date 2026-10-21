@@ -1,20 +1,19 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import PortalLayout from '@/components/PortalLayout';
 import StatusBadge from '@/components/StatusBadge';
 import EmptyState from '@/components/EmptyState';
 import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
 import { getTenderById, getSupplierInterests, getBidsBySupplier, expressInterest } from '@/services/api';
-import { formatDate, formatCurrency } from '@/utils/helpers';
-import { Calendar, Download, CheckCircle, FileText, Loader2 } from 'lucide-react';
-import ExpiredDocumentsWarning from '@/components/ExpiredDocumentsWarning';
+import { formatDate, formatCurrency, getDaysUntil } from '@/utils/helpers';
+import { Calendar, Download, CheckCircle, FileText, Loader2, AlertTriangle } from 'lucide-react';
 import { DOCUMENT_CONFIG } from '@/constants/documents';
 import { useSupplierCompliance } from '@/hooks/useSupplierCompliance';
 
 interface TenderItem {
   itemNo: number;
-  tenderItemId: string; 
+  tenderItemId: string;
   description: string;
   unit: string;
   quantity: number;
@@ -41,7 +40,7 @@ export default function SupplierTenderDetail() {
   const { addToast } = useNotification();
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const [tender, setTender] = useState<Tender | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -54,16 +53,16 @@ export default function SupplierTenderDetail() {
   // Client-side pagination for tender items
   const ITEMS_PER_PAGE = 10;
   const [itemsPage, setItemsPage] = useState(1);
-  
-  // Add compliance check
-  const { hasExpiredDocuments, expiredDocuments, canParticipate, loading: complianceLoading } = 
+
+  // Expired documents are only a warning. They do not block bids or interest.
+  const { hasExpiredDocuments, expiredDocuments, loading: complianceLoading } =
     useSupplierCompliance(user?.id || '');
 
   // Check for existing bid from navigation state or API
   useEffect(() => {
     const checkExistingBid = async () => {
       if (!id || !user) return;
-      
+
       // First check if we got state from navigation
       if (location.state?.hasExistingBid) {
         setHasExistingBid(true);
@@ -71,7 +70,7 @@ export default function SupplierTenderDetail() {
         setCheckingBid(false);
         return;
       }
-      
+
       try {
         const response = await getBidsBySupplier(user.id);
         const bids = response.data || [];
@@ -94,11 +93,12 @@ export default function SupplierTenderDetail() {
   useEffect(() => {
     const fetchTender = async () => {
       if (!id) return;
-      
+
       try {
         setLoading(true);
         const response = await getTenderById(id);
         setTender(response.data);
+        setItemsPage(1);
       } catch (err) {
         console.error('Failed to fetch tender:', err);
         setError('Failed to load tender details');
@@ -109,7 +109,7 @@ export default function SupplierTenderDetail() {
 
     const fetchExistingInterests = async () => {
       if (!id || !user) return;
-      
+
       try {
         const response = await getSupplierInterests(user.id);
         const interests = response.data || [];
@@ -126,13 +126,7 @@ export default function SupplierTenderDetail() {
 
   const handleExpressInterest = async () => {
     if (!id || !user) return;
-    
-    // Check frontend compliance before API call
-    if (!canParticipate) {
-      addToast('Please renew your expired documents before expressing interest', 'error');
-      return;
-    }
-    
+
     setExpressingInterest(true);
     try {
       const response = await expressInterest(id, user.id);
@@ -149,23 +143,13 @@ export default function SupplierTenderDetail() {
       }
     } catch (error: any) {
       console.error('Error expressing interest:', error);
-      // Handle expired documents error from backend
-      if (error.response?.status === 403 && error.response?.data?.code === 'EXPIRED_DOCUMENTS') {
-        addToast(error.response?.data?.message || 'Please renew your expired documents', 'error');
-      } else {
-        addToast(error.response?.data?.message || 'Failed to express interest', 'error');
-      }
+      addToast(error.response?.data?.message || 'Failed to express interest', 'error');
     } finally {
       setExpressingInterest(false);
     }
   };
 
   const handleSubmitBid = () => {
-    // Check frontend compliance before navigating
-    if (!canParticipate) {
-      addToast('Please renew your expired documents before submitting a bid', 'error');
-      return;
-    }
     navigate(`/supplier/tenders/${id}/bid`);
   };
 
@@ -184,9 +168,9 @@ export default function SupplierTenderDetail() {
   if (error || !tender) {
     return (
       <PortalLayout type="supplier" title="Not Found" breadcrumb={['Supplier', 'Tenders']}>
-        <EmptyState 
-          title="Tender Not Found" 
-          description={error || "This tender doesn't exist or has been removed."} 
+        <EmptyState
+          title="Tender Not Found"
+          description={error || "This tender doesn't exist or has been removed."}
         />
       </PortalLayout>
     );
@@ -205,10 +189,14 @@ export default function SupplierTenderDetail() {
   const pagedItems     = allItems.slice((safeItemsPage - 1) * ITEMS_PER_PAGE, safeItemsPage * ITEMS_PER_PAGE);
 
   // Determine button state
-  const isOpen = tender.status === 'Open';
-  const canSubmitBid = isOpen && hasInterest && !hasExistingBid && canParticipate;
+  const isPastClosing = tender.closingDate ? getDaysUntil(tender.closingDate) <= 0 : false;
+  const isOpen = tender.status === 'Open' && !isPastClosing;
+  const canSubmitBid = isOpen && hasInterest && !hasExistingBid;
   const hasBidSubmitted = hasExistingBid;
   const needsInterest = isOpen && !hasInterest && !hasExistingBid;
+  const showClosed = tender.status === 'Open' && isPastClosing && !hasExistingBid;
+
+  const expiredList: any[] = Array.isArray(expiredDocuments) ? expiredDocuments : [];
 
   return (
     <PortalLayout type="supplier" title={tender.title} breadcrumb={['Supplier', 'Tenders', tender.id]}>
@@ -219,12 +207,36 @@ export default function SupplierTenderDetail() {
           <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">{tender.category}</span>
         </div>
 
-        {/* Expired Documents Warning Banner */}
+        {/* Expired documents notice (warning only, does not block bidding) */}
         {hasExpiredDocuments && (
-          <ExpiredDocumentsWarning 
-            expiredDocuments={expiredDocuments} 
-            type="both" 
-          />
+          <div className="p-4 rounded-xl bg-warning/10 border border-warning/30">
+            <div className="flex items-center gap-2 text-warning">
+              <AlertTriangle size={18} />
+              <span className="font-medium">Some of your documents have expired</span>
+            </div>
+            <p className="text-sm mt-1 text-muted-foreground">
+              You can still express interest and submit a bid, but please renew them before the evaluation starts.
+            </p>
+            {expiredList.length > 0 && (
+              <ul className="mt-2 text-sm text-muted-foreground list-disc pl-5">
+                {expiredList.map((d: any, idx: number) => {
+                  const name = d?.name || d?.docType || d?.type || 'Document';
+                  const exp = d?.expiryDate || d?.expiresOn;
+                  return (
+                    <li key={idx}>
+                      {name}{exp ? ` (expired on ${formatDate(exp)})` : ''}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <Link
+              to="/supplier/documents"
+              className="inline-flex items-center gap-1 mt-3 text-sm font-medium text-primary hover:underline"
+            >
+              <FileText size={14} /> Renew Documents &rarr;
+            </Link>
+          </div>
         )}
 
         {/* Show bid submitted banner if exists */}
@@ -253,7 +265,7 @@ export default function SupplierTenderDetail() {
               <Calendar size={16} className="text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">Published</p>
-                <p className="font-medium text-sm">{formatDate(tender.publishedDate) || '—'}</p>
+                <p className="font-medium text-sm">{formatDate(tender.publishedDate) || '-'}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -310,7 +322,7 @@ export default function SupplierTenderDetail() {
               </thead>
               <tbody>
                 {pagedItems.map((i: TenderItem) => (
-                  <tr key={i.itemNo} className="border-b border-border/50">
+                  <tr key={i.tenderItemId || i.itemNo} className="border-b border-border/50">
                     <td className="p-2">{i.itemNo}</td>
                     <td className="p-2 font-mono text-xs">{i.tenderItemId}</td>
                     <td className="p-2">{i.description}</td>
@@ -352,38 +364,30 @@ export default function SupplierTenderDetail() {
           <button className="flex items-center gap-2 px-4 py-2 bg-muted rounded-lg text-sm">
             <Download size={16} /> Download Tender Documents
           </button>
-          
+
           {/* Bid Already Submitted button */}
           {hasBidSubmitted && (
-            <button 
+            <button
               disabled
               className="flex items-center gap-2 px-6 py-2 bg-success/20 text-success rounded-lg text-sm font-medium cursor-not-allowed"
             >
               <CheckCircle size={16} /> Bid Already Submitted
             </button>
           )}
-          
-          {/* Submit Bid Button - Disabled if documents expired */}
-          {canSubmitBid ? (
-            <button 
+
+          {/* Submit Bid Button */}
+          {canSubmitBid && (
+            <button
               onClick={handleSubmitBid}
               className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/80 transition-colors"
             >
               Submit Bid
             </button>
-          ) : isOpen && hasInterest && !hasExistingBid && !canParticipate && (
-            <button 
-              disabled
-              className="px-6 py-2 bg-muted text-muted-foreground rounded-lg text-sm font-medium cursor-not-allowed"
-              title="Renew expired documents to submit a bid"
-            >
-              Submit Bid (Documents Expired)
-            </button>
           )}
-          
-          {/* Express Interest Button - Disabled if documents expired */}
-          {needsInterest && canParticipate && (
-            <button 
+
+          {/* Express Interest Button */}
+          {needsInterest && (
+            <button
               onClick={handleExpressInterest}
               disabled={expressingInterest}
               className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50"
@@ -391,18 +395,18 @@ export default function SupplierTenderDetail() {
               {expressingInterest ? 'Processing...' : 'Express Interest'}
             </button>
           )}
-          
-          {needsInterest && !canParticipate && (
-            <button 
+
+          {/* Past closing date but status still Open */}
+          {showClosed && (
+            <button
               disabled
               className="px-6 py-2 bg-muted text-muted-foreground rounded-lg text-sm font-medium cursor-not-allowed"
-              title="Renew expired documents to express interest"
             >
-              Express Interest (Documents Expired)
+              Tender Closed
             </button>
           )}
-          
-          {hasInterest && !hasExistingBid && tender.status === 'Open' && (
+
+          {hasInterest && !hasExistingBid && isOpen && (
             <span className="flex items-center gap-2 px-4 py-2 bg-success/10 text-success rounded-lg text-sm">
               <CheckCircle size={16} /> Interest Expressed
             </span>
