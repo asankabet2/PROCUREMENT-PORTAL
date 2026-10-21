@@ -22,7 +22,7 @@ export default function BrowseTenders() {
   const { user } = useAuth();
   const { addToast } = useNotification();
   const navigate = useNavigate();
-  
+
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('');
   const [tenders, setTenders] = useState<Tender[]>([]);
@@ -56,7 +56,7 @@ export default function BrowseTenders() {
   useEffect(() => {
     const fetchInterests = async () => {
       if (!user?.id) return;
-      
+
       try {
         const response = await getSupplierInterests(user.id);
         const data = response.data || [];
@@ -75,7 +75,7 @@ export default function BrowseTenders() {
   useEffect(() => {
     const fetchSubmittedBids = async () => {
       if (!user?.id) return;
-      
+
       try {
         const response = await getBidsBySupplier(user.id);
         const data = response.data || [];
@@ -100,12 +100,19 @@ export default function BrowseTenders() {
       addToast('Please log in to express interest', 'error');
       return;
     }
-    
+
     if (interests.includes(tenderId)) {
       addToast('You have already expressed interest in this tender', 'info');
       return;
     }
-    
+
+    // Block interest on tenders past their closing date
+    const tender = tenders.find(t => t.id === tenderId);
+    if (tender && getDaysUntil(tender.closingDate) <= 0) {
+      addToast('This tender has closed', 'error');
+      return;
+    }
+
     try {
       const response = await expressInterest(tenderId, user.id);
       const data = response.data;
@@ -149,15 +156,15 @@ export default function BrowseTenders() {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex items-center bg-muted/50 rounded-lg px-3 py-2 gap-2 flex-1">
             <Search size={16} className="text-muted-foreground" />
-            <input 
-              value={search} 
-              onChange={e => setSearch(e.target.value)} 
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
               placeholder="Search by title or ID..."
-              className="bg-transparent text-sm outline-none w-full" 
+              className="bg-transparent text-sm outline-none w-full"
             />
           </div>
-          <select 
-            value={catFilter} 
+          <select
+            value={catFilter}
             onChange={e => setCatFilter(e.target.value)}
             className="px-3 py-2 bg-muted/50 border border-border rounded-lg text-sm outline-none"
           >
@@ -169,9 +176,10 @@ export default function BrowseTenders() {
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredTenders.map(t => {
             const days = getDaysUntil(t.closingDate);
+            const isClosed = days <= 0;
             const hasInterest = interests.includes(t.id);
             const hasSubmittedBid = submittedBids.includes(t.id);
-            
+
             return (
               <div key={t.id} className="glass-card p-5 flex flex-col">
                 <div className="flex items-center gap-2 mb-3">
@@ -187,18 +195,18 @@ export default function BrowseTenders() {
                     <Calendar size={14} className="text-muted-foreground" />
                     Closes: {formatDate(t.closingDate)}
                     {days <= 2 && days > 0 && <span className="text-xs bg-destructive/20 text-destructive px-1.5 py-0.5 rounded-full ml-1">{days}d left</span>}
-                    {days <= 0 && <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full ml-1">Closed</span>}
+                    {isClosed && <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full ml-1">Closed</span>}
                   </p>
                 </div>
                 <div className="flex gap-2 mt-auto">
-                  <button 
-                    onClick={() => navigate(`/supplier/tenders/${t.id}`, { 
-                      state: { 
+                  <button
+                    onClick={() => navigate(`/supplier/tenders/${t.id}`, {
+                      state: {
                         hasExistingBid: hasSubmittedBid,
                         hasInterest: hasInterest,
                         bidStatus: 'Submitted',
                         submittedDate: new Date().toISOString()
-                      } 
+                      }
                     })}
                     className="flex-1 py-2 bg-muted hover:bg-muted/80 rounded-lg text-sm font-medium transition-colors"
                   >
@@ -208,15 +216,19 @@ export default function BrowseTenders() {
                     <button disabled className="flex-1 py-2 bg-success/10 text-success rounded-lg text-sm font-medium flex items-center justify-center gap-1">
                       <FileText size={14} /> Bid Submitted
                     </button>
+                  ) : isClosed ? (
+                    <button disabled className="flex-1 py-2 bg-muted text-muted-foreground rounded-lg text-sm font-medium cursor-not-allowed">
+                      Closed
+                    </button>
                   ) : hasInterest ? (
-                    <button 
+                    <button
                       onClick={() => navigate(`/supplier/tenders/${t.id}/bid`)}
                       className="flex-1 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/80 transition-colors"
                     >
                       Submit Bid
                     </button>
                   ) : (
-                    <button 
+                    <button
                       onClick={() => handleExpressInterest(t.id)}
                       className="flex-1 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/80 transition-colors"
                     >
@@ -228,7 +240,7 @@ export default function BrowseTenders() {
             );
           })}
         </div>
-        
+
         {filteredTenders.length === 0 && (
           <div className="text-center py-12 text-muted-foreground">
             No open tenders found matching your criteria.
