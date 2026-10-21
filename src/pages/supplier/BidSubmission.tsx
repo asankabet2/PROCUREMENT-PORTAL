@@ -8,7 +8,6 @@ import { useNotification } from '@/context/NotificationContext';
 import { getTenderById, getSupplierById, submitBid } from '@/services/api';
 import { formatCurrency } from '@/utils/helpers';
 import { CheckCircle, Download, Loader2, AlertTriangle } from 'lucide-react';
-import ExpiredDocumentsWarning from '@/components/ExpiredDocumentsWarning';
 import { useSupplierCompliance } from '@/hooks/useSupplierCompliance';
 
 const steps = ['Confirm Eligibility', 'Price Items', 'Review & Submit'];
@@ -78,6 +77,7 @@ export default function BidSubmission() {
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
   const [submittedBidId, setSubmittedBidId] = useState<string>('');
+  const [bidWarning, setBidWarning] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [itemEntries, setItemEntries] = useState<Record<number, ItemEntry>>({});
   const [finalConfirm, setFinalConfirm] = useState(false);
@@ -92,6 +92,10 @@ export default function BidSubmission() {
     hasExpiredDocuments, expiredDocuments, canParticipate,
     complianceReason, loading: complianceLoading,
   } = useSupplierCompliance(user?.id || '');
+
+  // Expired documents are only a warning now. Rejected / pending documents still block,
+  // and the server enforces that as well.
+  const canBid = canParticipate || hasExpiredDocuments;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -115,10 +119,10 @@ export default function BidSubmission() {
   }, [id, user, addToast]);
 
   useEffect(() => {
-    if (!canParticipate && !loading && tender?.status === 'Open' && complianceReason) {
+    if (!canBid && !loading && tender?.status === 'Open' && complianceReason) {
       addToast(complianceReason, 'warning');
     }
-  }, [canParticipate, loading, tender?.status, complianceReason, addToast]);
+  }, [canBid, loading, tender?.status, complianceReason, addToast]);
 
   if (loading || complianceLoading) {
     return (
@@ -142,29 +146,6 @@ export default function BidSubmission() {
     return (
       <PortalLayout type="supplier" title="Bid Not Available" breadcrumb={['Supplier', 'Tenders', tender.id, 'Bid']}>
         <EmptyState title="Bidding Closed" description={`This tender is ${tender.status}. Bids are no longer being accepted.`} />
-      </PortalLayout>
-    );
-  }
-
-  if (!canParticipate && hasExpiredDocuments) {
-    return (
-      <PortalLayout type="supplier" title="Cannot Submit Bid" breadcrumb={['Supplier', 'Tenders', tender.id, 'Bid']}>
-        <div className="max-w-2xl mx-auto">
-          <ExpiredDocumentsWarning expiredDocuments={expiredDocuments} type="bid" />
-          {complianceReason && (
-            <div className="mt-4 p-4 bg-yellow-100 text-yellow-800 rounded-lg">
-              {complianceReason}
-            </div>
-          )}
-          <div className="mt-4 flex justify-center">
-            <button
-              onClick={() => navigate('/supplier/documents')}
-              className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium"
-            >
-              Go to Documents
-            </button>
-          </div>
-        </div>
       </PortalLayout>
     );
   }
@@ -259,7 +240,7 @@ export default function BidSubmission() {
   const submit = async () => {
     if (!validate()) return;
 
-    if (!canParticipate) {
+    if (!canBid) {
       addToast(complianceReason || 'Please resolve your document issues before submitting a bid', 'error');
       return;
     }
@@ -293,7 +274,10 @@ export default function BidSubmission() {
       if (response.status === 201) {
         setSubmitted(true);
         setSubmittedBidId(response.data?.bid?.bidId || bidData.bidId);
+        const warningMsg = response.data?.warning?.message || null;
+        setBidWarning(warningMsg);
         addToast('Bid submitted successfully!', 'success');
+        if (warningMsg) addToast(warningMsg, 'warning');
       } else {
         addToast(response.data?.message || 'Failed to submit bid', 'error');
       }
@@ -334,10 +318,24 @@ export default function BidSubmission() {
                 <span>{new Date().toLocaleString()}</span>
               </div>
             </div>
+            {bidWarning && (
+              <div className="p-4 mb-6 rounded-lg bg-yellow-100 text-yellow-800 text-sm text-left flex gap-2">
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                <span>{bidWarning}</span>
+              </div>
+            )}
             <div className="flex gap-3 justify-center">
               <button className="px-4 py-2 bg-muted rounded-lg text-sm flex items-center gap-1">
                 <Download size={14} /> Bid Receipt
               </button>
+              {bidWarning && (
+                <button
+                  onClick={() => navigate('/supplier/documents')}
+                  className="px-4 py-2 bg-yellow-100 text-yellow-800 rounded-lg text-sm font-medium"
+                >
+                  Renew Documents
+                </button>
+              )}
               <button
                 onClick={() => navigate('/supplier/dashboard')}
                 className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium"
@@ -358,8 +356,26 @@ export default function BidSubmission() {
     <PortalLayout type="supplier" title={`Bid for ${tender.title}`} breadcrumb={['Supplier', 'Tenders', tender.id, 'Bid']}>
       <div className="max-w-6xl mx-auto animate-fade-in">
         {hasExpiredDocuments && (
-          <div className="mb-4">
-            <ExpiredDocumentsWarning expiredDocuments={expiredDocuments} type="bid" />
+          <div className="mb-4 p-4 rounded-lg bg-yellow-100 text-yellow-800 text-sm flex gap-3">
+            <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">
+                {expiredDocuments.length === 1
+                  ? 'One of your documents has expired'
+                  : `${expiredDocuments.length} of your documents have expired`}
+              </p>
+              <p>
+                You can still submit this bid, but please renew{' '}
+                {expiredDocuments.length === 1 ? 'it' : 'them'} before the evaluation process starts.
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate('/supplier/documents')}
+                className="mt-2 underline font-medium"
+              >
+                Go to Documents
+              </button>
+            </div>
           </div>
         )}
 
@@ -399,7 +415,7 @@ export default function BidSubmission() {
               )}
               <label
                 className={`flex items-center gap-2 text-sm p-3 rounded-lg border ${
-                  !canParticipate
+                  !canBid
                     ? 'bg-muted/30 border-muted cursor-not-allowed opacity-60'
                     : 'bg-primary/5 border-primary/20'
                 }`}
@@ -408,11 +424,11 @@ export default function BidSubmission() {
                   type="checkbox"
                   checked={confirmed}
                   onChange={(e) => setConfirmed(e.target.checked)}
-                  disabled={!canParticipate}
+                  disabled={!canBid}
                 />
                 I confirm my company meets all requirements for this tender
               </label>
-              {!canParticipate && complianceReason && (
+              {!canBid && complianceReason && (
                 <p className="text-xs text-red-500 flex items-center gap-1">
                   <AlertTriangle size={12} />
                   {complianceReason}
@@ -450,7 +466,7 @@ export default function BidSubmission() {
                       const entry = getEntry(item.itemNo);
                       const included = entry.included;
                       const rowTotal = item.quantity * entry.unitPrice;
-                      const disabled = !canParticipate || !included;
+                      const disabled = !canBid || !included;
                       return (
                         <tr
                           key={item.itemNo}
@@ -461,7 +477,7 @@ export default function BidSubmission() {
                               type="checkbox"
                               checked={included}
                               onChange={() => toggleIncluded(item.itemNo)}
-                              disabled={!canParticipate}
+                              disabled={!canBid}
                               className="accent-primary"
                               aria-label={`Bid on item ${item.itemNo}`}
                             />
@@ -614,7 +630,7 @@ export default function BidSubmission() {
               </div>
               <label
                 className={`flex items-center gap-2 text-sm p-3 rounded-lg border ${
-                  !canParticipate
+                  !canBid
                     ? 'bg-muted/30 border-muted cursor-not-allowed opacity-60'
                     : 'bg-primary/5 border-primary/20'
                 }`}
@@ -623,7 +639,7 @@ export default function BidSubmission() {
                   type="checkbox"
                   checked={finalConfirm}
                   onChange={(e) => setFinalConfirm(e.target.checked)}
-                  disabled={!canParticipate}
+                  disabled={!canBid}
                 />
                 I confirm this bid is accurate and I am authorised to submit it
               </label>
@@ -642,9 +658,9 @@ export default function BidSubmission() {
             {step < 2 ? (
               <button
                 onClick={next}
-                disabled={!canParticipate && step === 0}
+                disabled={!canBid && step === 0}
                 className={`px-6 py-2 rounded-lg text-sm font-medium ${
-                  !canParticipate && step === 0
+                  !canBid && step === 0
                     ? 'bg-muted text-muted-foreground cursor-not-allowed'
                     : 'bg-primary text-primary-foreground hover:bg-primary/80'
                 }`}
@@ -654,7 +670,7 @@ export default function BidSubmission() {
             ) : (
               <button
                 onClick={submit}
-                disabled={submitting || !canParticipate}
+                disabled={submitting || !canBid}
                 className="px-8 py-2.5 bg-success text-success-foreground rounded-lg font-bold disabled:opacity-50"
               >
                 {submitting ? 'Submitting...' : 'Submit Bid'}
