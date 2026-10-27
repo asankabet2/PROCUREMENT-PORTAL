@@ -85,6 +85,16 @@ const DOCUMENT_TYPES: DocumentType[] = [
   { key: 'cvDocument', name: 'CV with Past Experiences...', required: true, requiresExpiry: false }
 ];
 
+const EXPIRY_GRACE_MONTHS = 3;
+
+// Earliest expiry date we still accept (today minus 3 months)
+const getMinAllowedExpiry = (): Date => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setMonth(d.getMonth() - EXPIRY_GRACE_MONTHS);
+  return d;
+};
+
 interface ExperienceEntry {
   id: string;
   company: string;
@@ -366,12 +376,13 @@ export default function SupplierRegister() {
       }
 
       const docsRequiringExpiry = DOCUMENT_TYPES.filter(doc => doc.requiresExpiry && files[doc.key]?.file);
+      const minAllowed = getMinAllowedExpiry();
       for (const doc of docsRequiringExpiry) {
         const expiryDate = documentExpiries[doc.key];
         if (!expiryDate) {
           e[`${doc.key}Expiry`] = `Please enter the expiry date for ${doc.name}`;
-        } else if (new Date(expiryDate) < new Date()) {
-          e[`${doc.key}Expiry`] = `The expiry date for ${doc.name} is in the past — please upload a valid, current document`;
+        } else if (new Date(expiryDate) < minAllowed) {
+          e[`${doc.key}Expiry`] = `The ${doc.name} expired more than ${EXPIRY_GRACE_MONTHS} months ago — please upload a more recent document`;
         }
       }
 
@@ -462,8 +473,24 @@ export default function SupplierRegister() {
 
   const getRemainingValidity = (expiryDate: string) => {
     if (!expiryDate) return null;
-    const daysRemaining = Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    if (daysRemaining < 0)   return { text: 'EXPIRED — please upload a current document', color: 'text-destructive', icon: 'error' };
+    const expiry = new Date(expiryDate);
+    const daysRemaining = Math.ceil((expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+    if (daysRemaining < 0) {
+      const minAllowed = getMinAllowedExpiry();
+      if (expiry < minAllowed) {
+        return {
+          text: `EXPIRED more than ${EXPIRY_GRACE_MONTHS} months ago — please upload a more recent document`,
+          color: 'text-destructive',
+          icon: 'error',
+        };
+      }
+      return {
+        text: `Expired ${Math.abs(daysRemaining)} day(s) ago — accepted for now, please renew and upload the new certificate once available`,
+        color: 'text-yellow-500',
+        icon: 'warning',
+      };
+    }
     if (daysRemaining <= 30) return { text: `Expires in ${daysRemaining} days — expiring very soon`, color: 'text-destructive', icon: 'warning' };
     if (daysRemaining <= 90) return { text: `Expires in ${Math.floor(daysRemaining / 30)} month(s)`, color: 'text-yellow-500', icon: 'warning' };
     return { text: `Valid for ${Math.floor(daysRemaining / 30)} month(s)`, color: 'text-success', icon: 'ok' };
