@@ -5,7 +5,7 @@ import StepIndicator from '@/components/StepIndicator';
 import EmptyState from '@/components/EmptyState';
 import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
-import { getTenderById, getSupplierById, submitBid } from '@/services/api';
+import { getTenderById, getSupplierById, submitBid, downloadBidReceipt } from '@/services/api';
 import { formatCurrency } from '@/utils/helpers';
 import { CheckCircle, Download, Loader2, AlertTriangle } from 'lucide-react';
 import { useSupplierCompliance } from '@/hooks/useSupplierCompliance';
@@ -71,6 +71,7 @@ export default function BidSubmission() {
   const { addToast } = useNotification();
   const navigate = useNavigate();
 
+  const [downloadingReceipt, setDownloadingReceipt] = useState(false);
   const [tender, setTender] = useState<Tender | null>(null);
   const [supplier, setSupplier] = useState<Supplier | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,6 +84,7 @@ export default function BidSubmission() {
   const [finalConfirm, setFinalConfirm] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  
 
   // Pagination for the Price Items table
   const PRICE_ITEMS_PER_PAGE = 10;
@@ -293,6 +295,19 @@ export default function BidSubmission() {
     }
   };
 
+  const handleDownloadReceipt = async () => {
+    if (!submittedBidId) return;
+    setDownloadingReceipt(true);
+    try {
+      await downloadBidReceipt(submittedBidId);
+      addToast('Bid receipt downloaded successfully', 'success');
+    } catch (err: any) {
+      addToast(err.response?.data?.message || 'Failed to download receipt', 'error');
+    } finally {
+      setDownloadingReceipt(false);
+    }
+  };
+
   if (submitted) {
     return (
       <PortalLayout type="supplier" title="Bid Submitted" breadcrumb={['Supplier', 'Tenders', tender.id, 'Bid']}>
@@ -325,8 +340,13 @@ export default function BidSubmission() {
               </div>
             )}
             <div className="flex gap-3 justify-center">
-              <button className="px-4 py-2 bg-muted rounded-lg text-sm flex items-center gap-1">
-                <Download size={14} /> Bid Receipt
+              <button
+                onClick={handleDownloadReceipt}
+                disabled={downloadingReceipt}
+                className="px-4 py-2 bg-muted rounded-lg text-sm flex items-center gap-1 disabled:opacity-70"
+              >
+                {downloadingReceipt ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                {downloadingReceipt ? 'Downloading...' : 'Bid Receipt'}
               </button>
               {bidWarning && (
                 <button
