@@ -1,13 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type ChangeEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import PortalLayout from '@/components/PortalLayout';
 import StepIndicator from '@/components/StepIndicator';
 import EmptyState from '@/components/EmptyState';
 import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
-import { getTenderById, getSupplierById, submitBid, downloadBidReceipt, getBidDraft, patchBidDraft, deleteBidDraft } from '@/services/api';
+import { getTenderById, getSupplierById, submitBid, downloadBidReceipt, getBidDraft, patchBidDraft, deleteBidDraft, downloadBidTemplate, importBidDraft } from '@/services/api'
 import { formatCurrency } from '@/utils/helpers';
-import { CheckCircle, Download, Loader2, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Download, Loader2, AlertTriangle, FileSpreadsheet, Upload } from 'lucide-react';
 import { useSupplierCompliance } from '@/hooks/useSupplierCompliance';
 
 const steps = ['Confirm Eligibility', 'Price Items', 'Review & Submit'];
@@ -48,6 +48,13 @@ interface ItemEntry {
   countryOfOrigin: string;
   packSize: string;
   expiryDate: string; // YYYY-MM-DD
+}
+
+interface ImportReport {
+  imported: number;
+  unchanged: number;
+  problemCount: number;
+  problems: { row: number; itemNo: number | null; message: string }[];
 }
 
 const DEFAULT_ENTRY: ItemEntry = {
@@ -91,6 +98,9 @@ export default function BidSubmission() {
   const dirtyRef = useRef<Set<number>>(new Set());   // itemNos edited since the last save
   const savingRef = useRef(false);
   const draftRestoredRef = useRef(false);
+  const [excelBusy, setExcelBusy] = useState<'download' | 'upload' | null>(null);
+  const [importReport, setImportReport] = useState<ImportReport | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
 
   // Pagination for the Price Items table
@@ -402,6 +412,77 @@ export default function BidSubmission() {
     }
   };
 
+    // Wait for any in-flight save, save pending edits, wait again
+  const flushDraft = async () => {
+    const waitIdle = async () => {
+      for (let i = 0; i < 50 && savingRef.current; i++) await new Promise((r) => setTimeout(r, 100));
+    };
+    await waitIdle();
+    await saveDraft();
+    await waitIdle();
+  };
+
+  const handleDownloadTemplate = async () => {
+    setExcelBusy('download');
+    try {
+      await flushDraft();
+      if (dirtyRef.current.size > 0) {
+        addToast('Your latest changes could not be saved yet. Check your connection and try again.', 'error');
+        return;
+      }
+      await downloadBidTemplate(tender.id);
+    } catch (err: any) {
+      addToast(err.message || 'Failed to download the template', 'error');
+    } finally {
+      setExcelBusy(null);
+    }
+  };
+
+  const handleTemplateFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // lets the same file be chosen again
+    if (!file) return;
+
+    setExcelBusy('upload');
+    setImportReport(null);
+    try {
+      await flushDraft();
+      if (dirtyRef.current.size > 0) {
+        addToast('Your latest changes could not be saved yet. Check your connection and try again.', 'error');
+        return;
+      }
+
+      const res = await importBidDraft(tender.id, file);
+
+      // The server draft is now the source of truth: reload the form from it
+      const draftRes = await getBidDraft(tender.id);
+      const saved = draftRes.data?.draft;
+      const restored: Record<number, ItemEntry> = {};
+      if (saved?.entries) {
+        tender.items.forEach((ti) => {
+          const en = saved.entries[ti.tenderItemId];
+          if (en) restored[ti.itemNo] = { ...DEFAULT_ENTRY, ...en };
+        });
+      }
+      dirtyRef.current = new Set();
+      setItemEntries(restored);
+      setSavedAt(new Date(res.data.updatedAt ?? saved?.updatedAt ?? Date.now()));
+      setSaveState('saved');
+      setPricePage(1);
+      setImportReport({
+        imported: res.data.imported,
+        unchanged: res.data.unchanged,
+        problemCount: res.data.problemCount,
+        problems: res.data.problems,
+      });
+      addToast(`Imported ${res.data.imported} item(s) from Excel`, 'success');
+    } catch (err: any) {
+      addToast(err.response?.data?.message || 'Failed to import the Excel file', 'error');
+    } finally {
+      setExcelBusy(null);
+    }
+  };
+
   if (submitted) {
     return (
       <PortalLayout type="supplier" title="Bid Submitted" breadcrumb={['Supplier', 'Tenders', tender.id, 'Bid']}>
@@ -575,6 +656,69 @@ export default function BidSubmission() {
                 Tick the items you want to bid on. Quantity is fixed to the requested quantity. Enter your
                 unit price, country of origin, pack size and expiry date for each item.
               </p>
+
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <button
+                  type="button"
+                  onClick={handleDownloadTemplate}
+                  disabled={excelBusy !== null || !canBid}
+                  className="px-3 py-2 bg-muted rounded-lg text-sm flex items-center gap-2 disabled:opacity-60"
+                >
+                  {excelBusy === 'download' ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
+                  {excelBusy === 'download' ? 'Preparing...' : 'Download Excel template'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={excelBusy !== null || !canBid}
+                  className="px-3 py-2 bg-muted rounded-lg text-sm flex items-center gap-2 disabled:opacity-60"
+                >
+                  {excelBusy === 'upload' ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                  {excelBusy === 'upload' ? 'Importing...' : 'Upload filled template'}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx"
+                  className="hidden"
+                  onChange={handleTemplateFile}
+                />
+                <span className="text-xs text-muted-foreground">
+                  Prefer to work offline? Download, fill in, and upload. The upload updates your saved draft.
+                </span>
+              </div>
+
+              {importReport && (
+                <div className="mb-4 p-3 rounded-lg border border-border bg-muted/30 text-sm">
+                  <div className="flex justify-between items-start gap-3">
+                    <p>
+                      Imported <strong>{importReport.imported}</strong> item(s)
+                      {importReport.unchanged > 0 && `; ${importReport.unchanged} row(s) left unchanged because nothing was entered`}
+                      {importReport.problemCount > 0 && (
+                        <span className="text-destructive font-medium">
+                          {' '}— {importReport.problemCount} problem(s) need attention
+                        </span>
+                      )}
+                    </p>
+                    <button type="button" className="underline text-xs shrink-0" onClick={() => setImportReport(null)}>
+                      Dismiss
+                    </button>
+                  </div>
+                  {importReport.problems.length > 0 && (
+                    <ul className="mt-2 max-h-40 overflow-y-auto text-xs space-y-1">
+                      {importReport.problems.map((p, i) => (
+                        <li key={i}>
+                          Excel row {p.row}{p.itemNo ? ` (item ${p.itemNo})` : ''}: {p.message}
+                        </li>
+                      ))}
+                      {importReport.problemCount > importReport.problems.length && (
+                        <li>...and {importReport.problemCount - importReport.problems.length} more.</li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+              )}
+
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>

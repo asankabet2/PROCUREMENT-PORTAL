@@ -146,6 +146,36 @@ export const saveBidDraft   = (tenderId, data) => api.put(`/bids/draft/${tenderI
 export const patchBidDraft  = (tenderId, data) => api.patch(`/bids/draft/${tenderId}`, data);   // autosave: changed items only
 export const deleteBidDraft = (tenderId)       => api.delete(`/bids/draft/${tenderId}`);
 
+export const downloadBidTemplate = async (tenderId) => {
+  let response;
+  try {
+    response = await api.get(`/bids/template/${tenderId}`, { responseType: 'blob' });
+  } catch (err) {
+    // errors arrive as a Blob when responseType is 'blob'; unwrap the server's message
+    const blob = err.response?.data;
+    if (blob instanceof Blob && blob.type === 'application/json') {
+      const msg = JSON.parse(await blob.text()).message;
+      throw new Error(msg || 'Download failed');
+    }
+    throw err;
+  }
+
+  const url = window.URL.createObjectURL(response.data);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Bid_Template_${tenderId}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const importBidDraft = (tenderId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post(`/bids/draft/${tenderId}/import`, formData, { headers: { 'Content-Type': null } });
+};
+
 // ============ TENDER ITEM AWARDS ============
 export const getTenderItemAwards = (tenderId, itemNo) => api.get(`/tenders/${tenderId}/items/${itemNo}/awards`);
 export const awardTenderItem = (tenderId, itemNo, data) => api.post(`/tenders/${tenderId}/items/${itemNo}/award`, data);
