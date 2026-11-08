@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
 import { getTenderById, getSupplierById, submitBid, downloadBidReceipt, getBidDraft, patchBidDraft, deleteBidDraft, downloadBidTemplate, importBidDraft } from '@/services/api'
 import { formatCurrency } from '@/utils/helpers';
-import { CheckCircle, Download, Loader2, AlertTriangle, FileSpreadsheet, Upload } from 'lucide-react';
+import { CheckCircle, Download, Loader2, AlertTriangle, FileSpreadsheet, Upload, Search, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw } from 'lucide-react';
 import { useSupplierCompliance } from '@/hooks/useSupplierCompliance';
 
 const steps = ['Confirm Eligibility', 'Price Items', 'Review & Submit'];
@@ -338,6 +338,16 @@ export default function BidSubmission() {
     { complete: 0, incomplete: 0, skipped: 0 }
   );
 
+  const filterTabs: { key: StatusFilter; label: string; count: number }[] = [
+    { key: 'all',        label: 'All',         count: tender.items.length },
+    { key: 'incomplete', label: 'Incomplete',  count: progress.incomplete },
+    { key: 'complete',   label: 'Complete',    count: progress.complete },
+    { key: 'skipped',    label: 'Not bidding', count: progress.skipped },
+  ];
+
+  const rangeFrom = filteredItems.length === 0 ? 0 : (safePricePage - 1) * pageSize + 1;
+  const rangeTo   = Math.min(safePricePage * pageSize, filteredItems.length);
+
   // Review step: paging over the items being bid on
   const totalReviewPages = Math.max(1, Math.ceil(items.length / REVIEW_PER_PAGE));
   const safeReviewPage   = Math.min(reviewPage, totalReviewPages);
@@ -607,8 +617,12 @@ export default function BidSubmission() {
   const inputBase =
     'px-2 py-1.5 bg-muted/50 border border-border rounded text-sm outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed';
 
-  const pagerBtn =
-    'px-3 py-1.5 rounded-md border border-border hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed';
+  const toolBtn =
+    'inline-flex items-center gap-2 h-9 px-3.5 rounded-lg border border-border bg-background text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+  const iconBtn =
+    'inline-flex items-center justify-center h-9 w-9 rounded-lg border border-border bg-background hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+  const fieldBase =
+    'h-9 rounded-lg border border-border bg-background px-3 text-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:opacity-50';
 
   return (
     <PortalLayout type="supplier" title={`Bid for ${tender.title}`} breadcrumb={['Supplier', 'Tenders', tender.id, 'Bid']}>
@@ -720,23 +734,27 @@ export default function BidSubmission() {
                 unit price, country of origin, pack size and expiry date for each item.
               </p>
 
-              <div className="flex flex-wrap items-center gap-2 mb-4">
+              <div className="flex flex-wrap items-center gap-2 mb-3">
                 <button
                   type="button"
                   onClick={handleDownloadTemplate}
                   disabled={excelBusy !== null || !canBid}
-                  className="px-3 py-2 bg-muted rounded-lg text-sm flex items-center gap-2 disabled:opacity-60"
+                  className={toolBtn}
                 >
-                  {excelBusy === 'download' ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
+                  {excelBusy === 'download'
+                    ? <Loader2 size={15} className="animate-spin text-primary" />
+                    : <FileSpreadsheet size={15} className="text-primary" />}
                   {excelBusy === 'download' ? 'Preparing...' : 'Download Excel template'}
                 </button>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={excelBusy !== null || !canBid}
-                  className="px-3 py-2 bg-muted rounded-lg text-sm flex items-center gap-2 disabled:opacity-60"
+                  className={toolBtn}
                 >
-                  {excelBusy === 'upload' ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                  {excelBusy === 'upload'
+                    ? <Loader2 size={15} className="animate-spin text-primary" />
+                    : <Upload size={15} className="text-primary" />}
                   {excelBusy === 'upload' ? 'Importing...' : 'Upload filled template'}
                 </button>
                 <input
@@ -782,44 +800,78 @@ export default function BidSubmission() {
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center gap-2 mb-2 text-sm">
-                <input
-                  type="search"
-                  placeholder="Search item no. or description"
-                  value={search}
-                  onChange={(e) => { setSearch(e.target.value); setPricePage(1); }}
-                  className={`w-64 ${inputBase}`}
-                />
-                <select
-                  value={statusFilter}
-                  onChange={(e) => { setStatusFilter(e.target.value as StatusFilter); setPricePage(1); }}
-                  className={inputBase}
-                >
-                  <option value="all">All items</option>
-                  <option value="incomplete">Incomplete</option>
-                  <option value="complete">Complete</option>
-                  <option value="skipped">Not bidding</option>
-                </select>
-                <select
-                  value={pageSize}
-                  onChange={(e) => { setPageSize(Number(e.target.value)); setPricePage(1); }}
-                  className={inputBase}
-                >
-                  {[10, 25, 50, 100].map((n) => (
-                    <option key={n} value={n}>{n} per page</option>
-                  ))}
-                </select>
-                {statusFilter !== 'all' && (
-                  <button type="button" onClick={refreshList} className="underline text-xs">
-                    Refresh list
-                  </button>
-                )}
-              </div>
+              <div className="rounded-xl border border-border bg-muted/20 p-3 mb-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative flex-1 min-w-[220px] max-w-sm">
+                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                    <input
+                      type="search"
+                      placeholder="Search item no. or description"
+                      value={search}
+                      onChange={(e) => { setSearch(e.target.value); setPricePage(1); }}
+                      className={`${fieldBase} w-full pl-9`}
+                    />
+                  </div>
 
-              <p className="text-xs text-muted-foreground mb-3">
-                {progress.complete} complete · {progress.incomplete} incomplete · {progress.skipped} not bidding · showing {filteredItems.length} of {tender.items.length} items
-                {statusFilter !== 'all' && ' (rows stay in the list while you edit them; press Refresh list to remove finished ones)'}
-              </p>
+                  <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-border bg-muted/40 p-0.5">
+                    {filterTabs.map((t) => {
+                      const active = statusFilter === t.key;
+                      return (
+                        <button
+                          key={t.key}
+                          type="button"
+                          onClick={() => { setStatusFilter(t.key); setPricePage(1); }}
+                          className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${
+                            active
+                              ? 'bg-background text-foreground shadow-sm'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          {t.label}
+                          <span
+                            className={`text-xs tabular-nums px-1.5 rounded-full ${
+                              active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {t.count.toLocaleString()}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="relative">
+                    <select
+                      value={pageSize}
+                      onChange={(e) => { setPageSize(Number(e.target.value)); setPricePage(1); }}
+                      className={`${fieldBase} appearance-none pr-9 cursor-pointer`}
+                      aria-label="Rows per page"
+                    >
+                      {[10, 25, 50, 100].map((n) => (
+                        <option key={n} value={n}>{n} per page</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>
+                    Showing {filteredItems.length.toLocaleString()} of {tender.items.length.toLocaleString()} items
+                  </span>
+                  {statusFilter !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={refreshList}
+                      title="Rows stay in the list while you edit them. Refresh to remove the ones you have finished."
+                      className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
+                    >
+                      <RefreshCw size={12} />
+                      Refresh list
+                    </button>
+                  )}
+                </div>
+              </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -917,7 +969,7 @@ export default function BidSubmission() {
                               disabled={disabled}
                             />
                           </td>
-                          <td className="p-3 text-right font-medium">
+                          <td className="p-3 text-right font-medium whitespace-nowrap">
                             {included ? formatCurrency(rowTotal) : <span className="text-muted-foreground">-</span>}
                           </td>
                         </tr>
@@ -929,7 +981,7 @@ export default function BidSubmission() {
                       <td colSpan={9} className="p-3 text-right font-bold">
                         Grand Total ({includedItems.length} of {tender.items.length} items):
                       </td>
-                      <td className="p-3 text-right font-bold text-lg">
+                      <td className="p-3 text-right font-bold text-lg whitespace-nowrap">
                         {formatCurrency(grandTotal)}
                       </td>
                     </tr>
@@ -938,35 +990,48 @@ export default function BidSubmission() {
               </div>
 
               {totalPricePages > 1 && (
-                <div className="flex flex-wrap items-center justify-between gap-2 mt-3 text-sm">
-                  <span className="text-muted-foreground">
-                    Page {safePricePage} of {totalPricePages} · {filteredItems.length} items
+                <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+                  <span className="text-sm text-muted-foreground">
+                    Showing{' '}
+                    <span className="font-medium text-foreground">
+                      {rangeFrom.toLocaleString()}–{rangeTo.toLocaleString()}
+                    </span>{' '}
+                    of {filteredItems.length.toLocaleString()} items
                   </span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button type="button" onClick={() => setPricePage(1)} disabled={safePricePage <= 1} className={pagerBtn}>
-                      First
+
+                  <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={() => setPricePage(1)} disabled={safePricePage <= 1}
+                      className={iconBtn} aria-label="First page" title="First page">
+                      <ChevronsLeft size={16} />
                     </button>
-                    <button type="button" onClick={() => setPricePage((p) => Math.max(1, p - 1))} disabled={safePricePage <= 1} className={pagerBtn}>
-                      Previous
+                    <button type="button" onClick={() => setPricePage((p) => Math.max(1, p - 1))} disabled={safePricePage <= 1}
+                      className={iconBtn} aria-label="Previous page" title="Previous page">
+                      <ChevronLeft size={16} />
                     </button>
-                    <span className="flex items-center gap-1">
-                      Go to
+
+                    <span className="flex items-center gap-2 px-2 text-sm text-muted-foreground">
+                      Page
                       <input
                         key={safePricePage}
-                        type="number"
-                        min={1}
-                        max={totalPricePages}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         defaultValue={safePricePage}
                         onKeyDown={(e) => { if (e.key === 'Enter') goToPage((e.target as HTMLInputElement).value); }}
                         onBlur={(e) => goToPage(e.target.value)}
-                        className={`w-16 text-center ${inputBase}`}
+                        className={`${fieldBase} w-16 px-1 text-center`}
+                        aria-label="Go to page"
                       />
+                      of {totalPricePages.toLocaleString()}
                     </span>
-                    <button type="button" onClick={() => setPricePage((p) => Math.min(totalPricePages, p + 1))} disabled={safePricePage >= totalPricePages} className={pagerBtn}>
-                      Next
+
+                    <button type="button" onClick={() => setPricePage((p) => Math.min(totalPricePages, p + 1))} disabled={safePricePage >= totalPricePages}
+                      className={iconBtn} aria-label="Next page" title="Next page">
+                      <ChevronRight size={16} />
                     </button>
-                    <button type="button" onClick={() => setPricePage(totalPricePages)} disabled={safePricePage >= totalPricePages} className={pagerBtn}>
-                      Last
+                    <button type="button" onClick={() => setPricePage(totalPricePages)} disabled={safePricePage >= totalPricePages}
+                      className={iconBtn} aria-label="Last page" title="Last page">
+                      <ChevronsRight size={16} />
                     </button>
                   </div>
                 </div>
@@ -1007,8 +1072,8 @@ export default function BidSubmission() {
                         <td className="p-2">{i.countryOfOrigin}</td>
                         <td className="p-2">{i.packSize}</td>
                         <td className="p-2">{i.expiryDate}</td>
-                        <td className="p-2 text-right">{formatCurrency(i.unitPrice)}</td>
-                        <td className="p-2 text-right">{formatCurrency(i.total)}</td>
+                        <td className="p-2 text-right whitespace-nowrap">{formatCurrency(i.unitPrice)}</td>
+                        <td className="p-2 text-right whitespace-nowrap">{formatCurrency(i.total)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1017,7 +1082,7 @@ export default function BidSubmission() {
                       <td colSpan={7} className="p-2 text-right font-bold">
                         Grand Total:
                       </td>
-                      <td className="p-2 text-right font-bold">{formatCurrency(grandTotal)}</td>
+                      <td className="p-2 text-right font-bold whitespace-nowrap">{formatCurrency(grandTotal)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -1029,11 +1094,11 @@ export default function BidSubmission() {
                     Showing {(safeReviewPage - 1) * REVIEW_PER_PAGE + 1}–{Math.min(safeReviewPage * REVIEW_PER_PAGE, items.length)} of {items.length} items. The grand total covers all of them.
                   </span>
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setReviewPage((p) => Math.max(1, p - 1))} disabled={safeReviewPage <= 1} className={pagerBtn}>
+                    <button type="button" onClick={() => setReviewPage((p) => Math.max(1, p - 1))} disabled={safeReviewPage <= 1} className={toolBtn}>
                       Previous
                     </button>
                     <span className="text-muted-foreground">Page {safeReviewPage} of {totalReviewPages}</span>
-                    <button type="button" onClick={() => setReviewPage((p) => Math.min(totalReviewPages, p + 1))} disabled={safeReviewPage >= totalReviewPages} className={pagerBtn}>
+                    <button type="button" onClick={() => setReviewPage((p) => Math.min(totalReviewPages, p + 1))} disabled={safeReviewPage >= totalReviewPages} className={toolBtn}>
                       Next
                     </button>
                   </div>
