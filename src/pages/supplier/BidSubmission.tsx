@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import PortalLayout from '@/components/PortalLayout';
 import StepIndicator from '@/components/StepIndicator';
 import EmptyState from '@/components/EmptyState';
 import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
-import { getTenderById, getSupplierById, submitBid, downloadBidReceipt } from '@/services/api';
+import { getTenderById, getSupplierById, submitBid, downloadBidReceipt, getBidDraft, patchBidDraft, deleteBidDraft } from '@/services/api';
 import { formatCurrency } from '@/utils/helpers';
 import { CheckCircle, Download, Loader2, AlertTriangle } from 'lucide-react';
 import { useSupplierCompliance } from '@/hooks/useSupplierCompliance';
@@ -84,6 +84,13 @@ export default function BidSubmission() {
   const [finalConfirm, setFinalConfirm] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [draftReady, setDraftReady] = useState(false);
+  const [saveTick, setSaveTick] = useState(0);
+  const dirtyRef = useRef<Set<number>>(new Set());   // itemNos edited since the last save
+  const savingRef = useRef(false);
+  const draftRestoredRef = useRef(false);
   
 
   // Pagination for the Price Items table
@@ -110,6 +117,29 @@ export default function BidSubmission() {
         ]);
         setTender(tenderRes.data);
         setSupplier(supplierRes.data);
+
+        if (!draftRestoredRef.current) {
+          draftRestoredRef.current = true;
+          try {
+            const draftRes = await getBidDraft(id);
+            const saved = draftRes.data?.draft;
+            if (saved?.entries) {
+              const restored: Record<number, ItemEntry> = {};
+              (tenderRes.data.items as TenderItem[]).forEach((ti) => {
+                const e = saved.entries[ti.tenderItemId];
+                if (e) restored[ti.itemNo] = { ...DEFAULT_ENTRY, ...e };
+              });
+              if (Object.keys(restored).length > 0) {
+                setItemEntries(restored);
+                setSavedAt(new Date(saved.updatedAt));
+                addToast('Your saved draft was restored', 'success');
+              }
+            }
+          } catch (draftErr) {
+            console.error('Failed to load draft:', draftErr); // never block the form
+          }
+          setDraftReady(true);
+        }
       } catch (err) {
         console.error('Failed to fetch data:', err);
         addToast('Failed to load bid data', 'error');
@@ -125,6 +155,54 @@ export default function BidSubmission() {
       addToast(complianceReason, 'warning');
     }
   }, [canBid, loading, tender?.status, complianceReason, addToast]);
+
+  const entriesRef = useRef(itemEntries);
+  entriesRef.current = itemEntries;
+
+  const saveDraft = useCallback(async () => {
+    if (!tender || savingRef.current || dirtyRef.current.size === 0) return;
+    savingRef.current = true;
+
+    const ids = Array.from(dirtyRef.current);
+    dirtyRef.current = new Set();
+    setSaveState('saving');
+    let failed = false;
+
+    try {
+      const tenderItemIdByNo = new Map(tender.items.map((ti) => [ti.itemNo, ti.tenderItemId]));
+      const changes: Record<string, ItemEntry> = {};
+      ids.forEach((no) => {
+        const entry = entriesRef.current[no];
+        const tenderItemId = tenderItemIdByNo.get(no);
+        if (entry && tenderItemId) changes[tenderItemId] = entry;
+      });
+
+      const res = await patchBidDraft(tender.id, { changes });
+      setSavedAt(new Date(res.data?.updatedAt ?? Date.now()));
+      setSaveState('saved');
+    } catch (err) {
+      console.error('Draft save failed:', err);
+      failed = true;
+      ids.forEach((no) => dirtyRef.current.add(no));   // retry these on the next save
+      setSaveState('error');
+    } finally {
+      savingRef.current = false;
+      if (!failed && dirtyRef.current.size > 0) setSaveTick((t) => t + 1);
+    }
+  }, [tender]);
+
+  useEffect(() => {
+    if (!draftReady || submitted || !canBid || tender?.status !== 'Open') return;
+    if (dirtyRef.current.size === 0) return;
+    const t = setTimeout(() => { void saveDraft(); }, 2000);
+    return () => clearTimeout(t);
+  }, [itemEntries, saveTick, saveDraft, draftReady, submitted, canBid, tender?.status]);
+
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === 'hidden') void saveDraft(); };
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
+  }, [saveDraft]);
 
   if (loading || complianceLoading) {
     return (
@@ -154,8 +232,8 @@ export default function BidSubmission() {
 
   // Items are included by default; suppliers can untick to skip.
   const getEntry = (itemNo: number): ItemEntry => itemEntries[itemNo] || DEFAULT_ENTRY;
-
-  const updateEntry = <K extends keyof ItemEntry>(itemNo: number, field: K, value: ItemEntry[K]) => {
+    const updateEntry = <K extends keyof ItemEntry>(itemNo: number, field: K, value: ItemEntry[K]) => {
+    dirtyRef.current.add(itemNo); // ← NEW
     setItemEntries((prev) => ({
       ...prev,
       [itemNo]: { ...(prev[itemNo] || DEFAULT_ENTRY), [field]: value },
@@ -163,6 +241,7 @@ export default function BidSubmission() {
   };
 
   const toggleIncluded = (itemNo: number) => {
+    dirtyRef.current.add(itemNo);   // ← NEW
     setItemEntries((prev) => {
       const current = prev[itemNo] || DEFAULT_ENTRY;
       return { ...prev, [itemNo]: { ...current, included: !current.included } };
@@ -236,8 +315,8 @@ export default function BidSubmission() {
     return e.length === 0;
   };
 
-  const next = () => { if (validate()) setStep((s) => s + 1); };
-  const back = () => setStep((s) => s - 1);
+  const next = () => { if (validate()) { void saveDraft(); setStep((s) => s + 1); } };
+  const back = () => { void saveDraft(); setStep((s) => s - 1); };
 
   const submit = async () => {
     if (!validate()) return;
@@ -305,6 +384,21 @@ export default function BidSubmission() {
       addToast(err.response?.data?.message || 'Failed to download receipt', 'error');
     } finally {
       setDownloadingReceipt(false);
+    }
+  };
+
+  const discardDraft = async () => {
+    if (!window.confirm('Discard your saved draft and clear all entered prices?')) return;
+    try {
+      await deleteBidDraft(tender.id);
+      dirtyRef.current = new Set();
+      setItemEntries({});
+      setSavedAt(null);
+      setSaveState('idle');
+      setPricePage(1);
+      addToast('Draft discarded', 'success');
+    } catch {
+      addToast('Failed to discard draft', 'error');
     }
   };
 
@@ -398,6 +492,22 @@ export default function BidSubmission() {
             </div>
           </div>
         )}
+
+        {/* Draft Indicator */}
+        <div className="flex items-center justify-end gap-3 text-xs text-muted-foreground mb-2 min-h-[1rem]">
+          {saveState === 'saving' && <span>Saving draft...</span>}
+          {saveState === 'error' && (
+            <span className="text-destructive">Couldn't save your draft. We'll retry on your next change.</span>
+          )}
+          {(saveState === 'saved' || saveState === 'idle') && savedAt && (
+            <span>Draft saved at {savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          )}
+          {savedAt && (
+            <button type="button" onClick={discardDraft} className="underline hover:text-foreground">
+              Discard draft
+            </button>
+          )}
+        </div>
 
         <StepIndicator steps={steps} currentStep={step} />
 

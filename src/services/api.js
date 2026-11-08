@@ -141,6 +141,11 @@ export const getBidsBySupplier = (supplierId) => api.get(`/bids/supplier/${suppl
 export const submitBid         = (data)       => api.post('/bids', data);
 export const updateBidStatus   = (id, data)   => api.patch(`/bids/${id}/status`, data);
 
+export const getBidDraft    = (tenderId)       => api.get(`/bids/draft/${tenderId}`);
+export const saveBidDraft   = (tenderId, data) => api.put(`/bids/draft/${tenderId}`, data);     // full replace (Excel import later)
+export const patchBidDraft  = (tenderId, data) => api.patch(`/bids/draft/${tenderId}`, data);   // autosave: changed items only
+export const deleteBidDraft = (tenderId)       => api.delete(`/bids/draft/${tenderId}`);
+
 // ============ TENDER ITEM AWARDS ============
 export const getTenderItemAwards = (tenderId, itemNo) => api.get(`/tenders/${tenderId}/items/${itemNo}/awards`);
 export const awardTenderItem = (tenderId, itemNo, data) => api.post(`/tenders/${tenderId}/items/${itemNo}/award`, data);
