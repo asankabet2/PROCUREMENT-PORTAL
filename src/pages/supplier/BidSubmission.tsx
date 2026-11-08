@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type ChangeEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import PortalLayout from '@/components/PortalLayout';
 import StepIndicator from '@/components/StepIndicator';
@@ -72,6 +72,22 @@ const tomorrowStr = () => {
   return d.toISOString().split('T')[0];
 };
 
+type StatusFilter = 'all' | 'incomplete' | 'complete' | 'skipped';
+
+const REVIEW_PER_PAGE = 50;
+
+// A bid row is complete when it has everything the server asks for on submit
+const isEntryComplete = (e: ItemEntry, today: string) =>
+  e.unitPrice > 0 &&
+  !!e.countryOfOrigin.trim() &&
+  !!e.packSize.trim() &&
+  !!e.expiryDate &&
+  e.expiryDate > today;
+
+// "1, 2, 3 and 3990 more" instead of a message listing thousands of numbers
+const listItemNos = (nos: number[], max = 10) =>
+  nos.length <= max ? nos.join(', ') : `${nos.slice(0, max).join(', ')} and ${nos.length - max} more`;
+
 export default function BidSubmission() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -103,10 +119,15 @@ export default function BidSubmission() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
 
-  // Pagination for the Price Items table
-  const PRICE_ITEMS_PER_PAGE = 10;
+ 
+  // Price Items table: paging, search and status filter
   const [pricePage, setPricePage] = useState(1);
-
+  const [pageSize, setPageSize] = useState(25);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [filterTick, setFilterTick] = useState(0); // bump to re-apply the filter to the latest edits
+  const [reviewPage, setReviewPage] = useState(1); 
+  
   const {
     hasExpiredDocuments, expiredDocuments, canParticipate,
     complianceReason, loading: complianceLoading,
@@ -214,6 +235,22 @@ export default function BidSubmission() {
     return () => document.removeEventListener('visibilitychange', onHide);
   }, [saveDraft]);
 
+  // Computed from a snapshot of the entries (entriesRef), and only when the search, the filter or
+  // filterTick changes, so rows stay put while a supplier is typing in them.
+  const filteredItems = useMemo(() => {
+    if (!tender) return [] as TenderItem[];
+    const q = search.trim().toLowerCase();
+    const today = todayStr();
+    return tender.items.filter((it) => {
+      if (q && !String(it.itemNo).includes(q) && !(it.description || '').toLowerCase().includes(q)) return false;
+      if (statusFilter === 'all') return true;
+      const e = entriesRef.current[it.itemNo] || DEFAULT_ENTRY;
+      if (statusFilter === 'skipped') return !e.included;
+      const complete = e.included && isEntryComplete(e, today);
+      return statusFilter === 'complete' ? complete : e.included && !complete;
+    });
+  }, [tender, search, statusFilter, filterTick]);
+
   if (loading || complianceLoading) {
     return (
       <PortalLayout type="supplier" title="Loading..." breadcrumb={['Supplier', 'Tenders', id || '', 'Bid']}>
@@ -243,7 +280,7 @@ export default function BidSubmission() {
   // Items are included by default; suppliers can untick to skip.
   const getEntry = (itemNo: number): ItemEntry => itemEntries[itemNo] || DEFAULT_ENTRY;
     const updateEntry = <K extends keyof ItemEntry>(itemNo: number, field: K, value: ItemEntry[K]) => {
-    dirtyRef.current.add(itemNo); // ← NEW
+    dirtyRef.current.add(itemNo);
     setItemEntries((prev) => ({
       ...prev,
       [itemNo]: { ...(prev[itemNo] || DEFAULT_ENTRY), [field]: value },
@@ -251,7 +288,7 @@ export default function BidSubmission() {
   };
 
   const toggleIncluded = (itemNo: number) => {
-    dirtyRef.current.add(itemNo);   // ← NEW
+    dirtyRef.current.add(itemNo); 
     setItemEntries((prev) => {
       const current = prev[itemNo] || DEFAULT_ENTRY;
       return { ...prev, [itemNo]: { ...current, included: !current.included } };
@@ -277,13 +314,34 @@ export default function BidSubmission() {
 
   const grandTotal = items.reduce((a, i) => a + i.total, 0);
 
-  // Pagination derived values for the Price Items table
-  const totalPricePages = Math.max(1, Math.ceil(tender.items.length / PRICE_ITEMS_PER_PAGE));
+  // Price Items table: paging over the filtered list
+  const totalPricePages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
   const safePricePage   = Math.min(pricePage, totalPricePages);
-  const pagedPriceItems = tender.items.slice(
-    (safePricePage - 1) * PRICE_ITEMS_PER_PAGE,
-    safePricePage * PRICE_ITEMS_PER_PAGE
+  const pagedPriceItems = filteredItems.slice((safePricePage - 1) * pageSize, safePricePage * pageSize);
+
+  const goToPage = (value: string) => {
+    const n = parseInt(value, 10);
+    if (!isNaN(n)) setPricePage(Math.min(Math.max(1, n), totalPricePages));
+  };
+  const refreshList = () => { setPricePage(1); setFilterTick((t) => t + 1); };
+
+  // Progress across the whole tender
+  const todayForProgress = todayStr();
+  const progress = tender.items.reduce(
+    (acc, it) => {
+      const e = getEntry(it.itemNo);
+      if (!e.included) acc.skipped++;
+      else if (isEntryComplete(e, todayForProgress)) acc.complete++;
+      else acc.incomplete++;
+      return acc;
+    },
+    { complete: 0, incomplete: 0, skipped: 0 }
   );
+
+  // Review step: paging over the items being bid on
+  const totalReviewPages = Math.max(1, Math.ceil(items.length / REVIEW_PER_PAGE));
+  const safeReviewPage   = Math.min(reviewPage, totalReviewPages);
+  const pagedReviewItems = items.slice((safeReviewPage - 1) * REVIEW_PER_PAGE, safeReviewPage * REVIEW_PER_PAGE);
 
   const validate = () => {
     const e: string[] = [];
@@ -305,18 +363,18 @@ export default function BidSubmission() {
         });
 
         if (badPrice.length > 0)
-          e.push(`Enter a unit price for item ${badPrice.map((i) => i.itemNo).join(', ')}`);
+          e.push(`Enter a unit price for ${badPrice.length} item(s): ${listItemNos(badPrice.map((i) => i.itemNo))}`);
         if (badDetails.length > 0)
-          e.push(`Country of origin, pack size and expiry date are required for item ${badDetails.map((i) => i.itemNo).join(', ')}`);
+          e.push(`Country of origin, pack size and expiry date are required for ${badDetails.length} item(s): ${listItemNos(badDetails.map((i) => i.itemNo))}`);
         if (badExpiry.length > 0)
-          e.push(`Expiry date must be in the future for item ${badExpiry.map((i) => i.itemNo).join(', ')}`);
+          e.push(`Expiry date must be in the future for ${badExpiry.length} item(s): ${listItemNos(badExpiry.map((i) => i.itemNo))}`);
 
-        // Jump to the page holding the first incomplete item so it's visible
-        const firstBad = [...badPrice, ...badDetails, ...badExpiry]
-          .sort((a, b) => a.itemNo - b.itemNo)[0];
-        if (firstBad) {
-          const idx = tender.items.findIndex((t) => t.itemNo === firstBad.itemNo);
-          if (idx >= 0) setPricePage(Math.floor(idx / PRICE_ITEMS_PER_PAGE) + 1);
+        // Show the supplier every problem row at once
+        if (badPrice.length + badDetails.length + badExpiry.length > 0) {
+          setSearch('');
+          setStatusFilter('incomplete');
+          setPricePage(1);
+          setFilterTick((t) => t + 1);
         }
       }
     }
@@ -406,6 +464,7 @@ export default function BidSubmission() {
       setSavedAt(null);
       setSaveState('idle');
       setPricePage(1);
+      setFilterTick((t) => t + 1);
       addToast('Draft discarded', 'success');
     } catch {
       addToast('Failed to discard draft', 'error');
@@ -469,6 +528,7 @@ export default function BidSubmission() {
       setSavedAt(new Date(res.data.updatedAt ?? saved?.updatedAt ?? Date.now()));
       setSaveState('saved');
       setPricePage(1);
+      setFilterTick((t) => t + 1);
       setImportReport({
         imported: res.data.imported,
         unchanged: res.data.unchanged,
@@ -546,6 +606,9 @@ export default function BidSubmission() {
 
   const inputBase =
     'px-2 py-1.5 bg-muted/50 border border-border rounded text-sm outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed';
+
+  const pagerBtn =
+    'px-3 py-1.5 rounded-md border border-border hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed';
 
   return (
     <PortalLayout type="supplier" title={`Bid for ${tender.title}`} breadcrumb={['Supplier', 'Tenders', tender.id, 'Bid']}>
@@ -719,6 +782,45 @@ export default function BidSubmission() {
                 </div>
               )}
 
+              <div className="flex flex-wrap items-center gap-2 mb-2 text-sm">
+                <input
+                  type="search"
+                  placeholder="Search item no. or description"
+                  value={search}
+                  onChange={(e) => { setSearch(e.target.value); setPricePage(1); }}
+                  className={`w-64 ${inputBase}`}
+                />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => { setStatusFilter(e.target.value as StatusFilter); setPricePage(1); }}
+                  className={inputBase}
+                >
+                  <option value="all">All items</option>
+                  <option value="incomplete">Incomplete</option>
+                  <option value="complete">Complete</option>
+                  <option value="skipped">Not bidding</option>
+                </select>
+                <select
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setPricePage(1); }}
+                  className={inputBase}
+                >
+                  {[10, 25, 50, 100].map((n) => (
+                    <option key={n} value={n}>{n} per page</option>
+                  ))}
+                </select>
+                {statusFilter !== 'all' && (
+                  <button type="button" onClick={refreshList} className="underline text-xs">
+                    Refresh list
+                  </button>
+                )}
+              </div>
+
+              <p className="text-xs text-muted-foreground mb-3">
+                {progress.complete} complete · {progress.incomplete} incomplete · {progress.skipped} not bidding · showing {filteredItems.length} of {tender.items.length} items
+                {statusFilter !== 'all' && ' (rows stay in the list while you edit them; press Refresh list to remove finished ones)'}
+              </p>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -736,6 +838,15 @@ export default function BidSubmission() {
                     </tr>
                   </thead>
                   <tbody>
+
+                    {pagedPriceItems.length === 0 && (
+                      <tr>
+                        <td colSpan={10} className="p-6 text-center text-muted-foreground">
+                          No items match the current search or filter.
+                        </td>
+                      </tr>
+                    )}
+
                     {pagedPriceItems.map((item) => {
                       const entry = getEntry(item.itemNo);
                       const included = entry.included;
@@ -827,26 +938,35 @@ export default function BidSubmission() {
               </div>
 
               {totalPricePages > 1 && (
-                <div className="flex items-center justify-between mt-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 mt-3 text-sm">
                   <span className="text-muted-foreground">
-                    Page {safePricePage} of {totalPricePages} · {tender.items.length} items
+                    Page {safePricePage} of {totalPricePages} · {filteredItems.length} items
                   </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPricePage((p) => Math.max(1, p - 1))}
-                      disabled={safePricePage <= 1}
-                      className="px-3 py-1.5 rounded-md border border-border hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={() => setPricePage(1)} disabled={safePricePage <= 1} className={pagerBtn}>
+                      First
+                    </button>
+                    <button type="button" onClick={() => setPricePage((p) => Math.max(1, p - 1))} disabled={safePricePage <= 1} className={pagerBtn}>
                       Previous
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setPricePage((p) => Math.min(totalPricePages, p + 1))}
-                      disabled={safePricePage >= totalPricePages}
-                      className="px-3 py-1.5 rounded-md border border-border hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
+                    <span className="flex items-center gap-1">
+                      Go to
+                      <input
+                        key={safePricePage}
+                        type="number"
+                        min={1}
+                        max={totalPricePages}
+                        defaultValue={safePricePage}
+                        onKeyDown={(e) => { if (e.key === 'Enter') goToPage((e.target as HTMLInputElement).value); }}
+                        onBlur={(e) => goToPage(e.target.value)}
+                        className={`w-16 text-center ${inputBase}`}
+                      />
+                    </span>
+                    <button type="button" onClick={() => setPricePage((p) => Math.min(totalPricePages, p + 1))} disabled={safePricePage >= totalPricePages} className={pagerBtn}>
                       Next
+                    </button>
+                    <button type="button" onClick={() => setPricePage(totalPricePages)} disabled={safePricePage >= totalPricePages} className={pagerBtn}>
+                      Last
                     </button>
                   </div>
                 </div>
@@ -879,7 +999,7 @@ export default function BidSubmission() {
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((i) => (
+                    {pagedReviewItems.map((i) => (
                       <tr key={i.itemNo} className="border-b border-border/50">
                         <td className="p-2">{i.description}</td>
                         <td className="p-2 text-center">{i.unit}</td>
@@ -902,6 +1022,24 @@ export default function BidSubmission() {
                   </tfoot>
                 </table>
               </div>
+
+              {totalReviewPages > 1 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span className="text-muted-foreground">
+                    Showing {(safeReviewPage - 1) * REVIEW_PER_PAGE + 1}–{Math.min(safeReviewPage * REVIEW_PER_PAGE, items.length)} of {items.length} items. The grand total covers all of them.
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setReviewPage((p) => Math.max(1, p - 1))} disabled={safeReviewPage <= 1} className={pagerBtn}>
+                      Previous
+                    </button>
+                    <span className="text-muted-foreground">Page {safeReviewPage} of {totalReviewPages}</span>
+                    <button type="button" onClick={() => setReviewPage((p) => Math.min(totalReviewPages, p + 1))} disabled={safeReviewPage >= totalReviewPages} className={pagerBtn}>
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <label
                 className={`flex items-center gap-2 text-sm p-3 rounded-lg border ${
                   !canBid
