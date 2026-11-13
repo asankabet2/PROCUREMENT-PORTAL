@@ -63,6 +63,18 @@ export function useSupplierCompliance(supplierId: string) {
         const blocked = expired.length > 0 || rejected.length > 0;
 
         // Build a specific reason message for the UI
+        // let reason: string | null = null;
+        // if (expired.length > 0 && rejected.length === 0 && pending.length === 0) {
+        //   reason = 'You have expired documents. Please renew them before submitting a bid.';
+        // } else if (rejected.length > 0 && expired.length === 0 && pending.length === 0) {
+        //   reason = 'You have rejected documents. Please re-upload them before submitting a bid.';
+        // } else if (pending.length > 0 && expired.length === 0 && rejected.length === 0) {
+        //   reason = 'You have documents pending verification. Please wait for admin approval before submitting a bid.';
+        // } else if (blocked) {
+        //   reason = 'You have document issues (expired, rejected, or pending verification) that must be resolved before submitting a bid.';
+        // }
+
+        // Build a specific reason message for the UI
         let reason: string | null = null;
         if (expired.length > 0 && rejected.length === 0) {
           reason = 'You have expired documents. Please renew them before submitting a bid.';
