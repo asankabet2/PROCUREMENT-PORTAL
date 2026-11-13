@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
 import { getTenderById, getSupplierInterests, getBidsBySupplier, expressInterest } from '@/services/api';
 import { formatDate, formatCurrency, getDaysUntil } from '@/utils/helpers';
-import { Calendar, Download, CheckCircle, FileText, Loader2, AlertTriangle } from 'lucide-react';
+import { Calendar, CheckCircle, FileText, Loader2, AlertTriangle } from 'lucide-react';
 import { DOCUMENT_CONFIG } from '@/constants/documents';
 import { useSupplierCompliance } from '@/hooks/useSupplierCompliance';
 
@@ -361,9 +361,9 @@ export default function SupplierTenderDetail() {
 
         <div className="flex items-center gap-3 flex-wrap">
           {/* Download Tender Documents button */}
-          <button className="flex items-center gap-2 px-4 py-2 bg-muted rounded-lg text-sm">
+          {/* <button className="flex items-center gap-2 px-4 py-2 bg-muted rounded-lg text-sm">
             <Download size={16} /> Download Tender Documents
-          </button>
+          </button> */}
 
           {/* Bid Already Submitted button */}
           {hasBidSubmitted && (
