@@ -49,23 +49,27 @@ export function useSupplierCompliance(supplierId: string) {
         const rejected = docs.filter((doc: any) => doc.status === 'Rejected');
         const pending  = docs.filter((doc: any) => doc.status === 'Pending');
 
+        // const blocking: BlockingDocument[] = [
+        //   ...rejected.map((d: any) => ({ name: d.name, docType: d.docType, status: 'Rejected' as const })),
+        //   ...pending.map((d: any)  => ({ name: d.name, docType: d.docType, status: 'Pending'  as const })),
+        // ];
+
         const blocking: BlockingDocument[] = [
           ...rejected.map((d: any) => ({ name: d.name, docType: d.docType, status: 'Rejected' as const })),
-          ...pending.map((d: any)  => ({ name: d.name, docType: d.docType, status: 'Pending'  as const })),
         ];
 
-        const blocked = expired.length > 0 || rejected.length > 0 || pending.length > 0;
+        //const blocked = expired.length > 0 || rejected.length > 0 || pending.length > 0;
+
+        const blocked = expired.length > 0 || rejected.length > 0;
 
         // Build a specific reason message for the UI
         let reason: string | null = null;
-        if (expired.length > 0 && rejected.length === 0 && pending.length === 0) {
+        if (expired.length > 0 && rejected.length === 0) {
           reason = 'You have expired documents. Please renew them before submitting a bid.';
-        } else if (rejected.length > 0 && expired.length === 0 && pending.length === 0) {
+        } else if (rejected.length > 0 && expired.length === 0) {
           reason = 'You have rejected documents. Please re-upload them before submitting a bid.';
-        } else if (pending.length > 0 && expired.length === 0 && rejected.length === 0) {
-          reason = 'You have documents pending verification. Please wait for admin approval before submitting a bid.';
         } else if (blocked) {
-          reason = 'You have document issues (expired, rejected, or pending verification) that must be resolved before submitting a bid.';
+          reason = 'You have document issues (expired or rejected) that must be resolved before submitting a bid.';
         }
 
         setHasExpiredDocuments(expired.length > 0);
