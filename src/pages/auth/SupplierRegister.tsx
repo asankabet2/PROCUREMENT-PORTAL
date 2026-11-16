@@ -85,15 +85,28 @@ const DOCUMENT_TYPES: DocumentType[] = [
   { key: 'cvDocument', name: 'CV with Past Experiences...', required: true, requiresExpiry: false }
 ];
 
-const EXPIRY_GRACE_MONTHS = 3;
+// const EXPIRY_GRACE_MONTHS = 3;
 
-// Earliest expiry date we still accept (today minus 3 months)
-const getMinAllowedExpiry = (): Date => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setMonth(d.getMonth() - EXPIRY_GRACE_MONTHS);
-  return d;
-};
+// // Earliest expiry date we still accept (today minus 3 months)
+// const getMinAllowedExpiry = (): Date => {
+//   const d = new Date();
+//   d.setHours(0, 0, 0, 0);
+//   d.setMonth(d.getMonth() - EXPIRY_GRACE_MONTHS);
+//   return d;
+// };
+
+const EXPIRY_GRACE_MONTHS = 5; 
+
+function getMinAllowedExpiry() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDate();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - EXPIRY_GRACE_MONTHS);
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(day, lastDay));
+    return d;
+}
 
 interface ExperienceEntry {
   id: string;
