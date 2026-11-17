@@ -108,6 +108,23 @@ function getMinAllowedExpiry() {
     return d;
 }
 
+// Keeps only characters valid in a practical email address, lowercases,
+// and allows a single "@".
+const sanitizeEmail = (value: string): string => {
+  let v = value.toLowerCase().replace(/[^a-z0-9._%+\-@]/g, '');
+  const at = v.indexOf('@');
+  if (at !== -1) {
+    v = v.slice(0, at + 1) + v.slice(at + 1).replace(/@/g, '');
+  }
+  return v.slice(0, 254);
+};
+
+const EMAIL_REGEX =
+  /^[a-z0-9._%+-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/;
+
+const isValidEmail = (value: string): boolean =>
+  EMAIL_REGEX.test(value) && !value.includes('..');
+
 interface ExperienceEntry {
   id: string;
   company: string;
@@ -374,6 +391,7 @@ export default function SupplierRegister() {
       if (!form.contactPerson) e.contactPerson = 'Required';
       if (!form.designation) e.designation = 'Required';
       if (!form.email) e.email = 'Required';
+      else if (!isValidEmail(form.email)) e.email = 'Please enter a valid email address (e.g. name@company.com)';
       if (!form.phone) e.phone = 'Required';
       if (!form.address) e.address = 'Required';
       if (!form.regionId) e.regionId = 'Please select a region';
@@ -440,7 +458,7 @@ export default function SupplierRegister() {
         companyTypeId: form.companyTypeId,
         contactPerson: form.contactPerson,
         designation: form.designation,
-        email: form.email,
+        email: sanitizeEmail(form.email.trim()),
         phone: form.phone,
         address: form.address,
         cityId: form.cityId,
@@ -641,7 +659,7 @@ export default function SupplierRegister() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1.5">Email <span className="text-destructive">*</span></label>
-                  <input type="email" value={form.email} onChange={e => update('email', e.target.value)} className={inputClass('email')} />
+                  <input  type="email"  inputMode="email"  autoComplete="email"  value={form.email}  onChange={e => update('email', sanitizeEmail(e.target.value))}  className={inputClass('email')}  />
                   {errors.email && <ErrorBanner message={errors.email} />}
                 </div>
                 <div>
