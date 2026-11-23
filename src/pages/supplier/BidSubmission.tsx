@@ -128,9 +128,14 @@ export default function BidSubmission() {
   const [filterTick, setFilterTick] = useState(0); // bump to re-apply the filter to the latest edits
   const [reviewPage, setReviewPage] = useState(1); 
   
+  // const {
+  //   hasExpiredDocuments, expiredDocuments, canParticipate,
+  //   complianceReason, loading: complianceLoading,
+  // } = useSupplierCompliance(user?.id || '');
+
   const {
-    hasExpiredDocuments, expiredDocuments, canParticipate,
-    complianceReason, loading: complianceLoading,
+  hasExpiredDocuments, hasRejectedDocuments,
+  canParticipate, complianceReason, loading: complianceLoading,
   } = useSupplierCompliance(user?.id || '');
 
   // Expired documents are only a warning now. Rejected / pending documents still block,
@@ -627,24 +632,13 @@ export default function BidSubmission() {
   return (
     <PortalLayout type="supplier" title={`Bid for ${tender.title}`} breadcrumb={['Supplier', 'Tenders', tender.id, 'Bid']}>
       <div className="max-w-6xl mx-auto animate-fade-in">
-        {hasExpiredDocuments && (
+        {(hasExpiredDocuments || hasRejectedDocuments) && (
           <div className="mb-4 p-4 rounded-lg bg-yellow-100 text-yellow-800 text-sm flex gap-3">
             <AlertTriangle size={18} className="shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold">
-                {expiredDocuments.length === 1
-                  ? 'One of your documents has expired'
-                  : `${expiredDocuments.length} of your documents have expired`}
-              </p>
-              <p>
-                You can still submit this bid, but please renew{' '}
-                {expiredDocuments.length === 1 ? 'it' : 'them'} before the evaluation process starts.
-              </p>
-              <button
-                type="button"
-                onClick={() => navigate('/supplier/documents')}
-                className="mt-2 underline font-medium"
-              >
+              <p className="font-semibold">Document issues</p>
+              <p>You can still submit this bid. {complianceReason}</p>
+              <button type="button" onClick={() => navigate('/supplier/documents')} className="mt-2 underline font-medium">
                 Go to Documents
               </button>
             </div>

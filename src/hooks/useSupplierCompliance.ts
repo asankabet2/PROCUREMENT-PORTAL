@@ -39,7 +39,7 @@ export function useSupplierCompliance(supplierId: string) {
 
         const expired = docs.filter((doc: any) => {
           if (!doc.requiresExpiry) return false;
-          if (doc.status === 'Replaced') return false;
+          if (doc.status === 'Replaced' || doc.status === 'Rejected') return false;
           if (!doc.expiryDate) return false;
           const expiryDate = new Date(doc.expiryDate);
           expiryDate.setHours(0, 0, 0, 0);
@@ -60,28 +60,16 @@ export function useSupplierCompliance(supplierId: string) {
 
         //const blocked = expired.length > 0 || rejected.length > 0 || pending.length > 0;
 
-        const blocked = expired.length > 0 || rejected.length > 0;
+        //const blocked = false; 
 
-        // Build a specific reason message for the UI
-        // let reason: string | null = null;
-        // if (expired.length > 0 && rejected.length === 0 && pending.length === 0) {
-        //   reason = 'You have expired documents. Please renew them before submitting a bid.';
-        // } else if (rejected.length > 0 && expired.length === 0 && pending.length === 0) {
-        //   reason = 'You have rejected documents. Please re-upload them before submitting a bid.';
-        // } else if (pending.length > 0 && expired.length === 0 && rejected.length === 0) {
-        //   reason = 'You have documents pending verification. Please wait for admin approval before submitting a bid.';
-        // } else if (blocked) {
-        //   reason = 'You have document issues (expired, rejected, or pending verification) that must be resolved before submitting a bid.';
-        // }
-
-        // Build a specific reason message for the UI
+        // the reason becomes a warning message, not a block
         let reason: string | null = null;
-        if (expired.length > 0 && rejected.length === 0) {
-          reason = 'You have expired documents. Please renew them before submitting a bid.';
-        } else if (rejected.length > 0 && expired.length === 0) {
-          reason = 'You have rejected documents. Please re-upload them before submitting a bid.';
-        } else if (blocked) {
-          reason = 'You have document issues (expired or rejected) that must be resolved before submitting a bid.';
+        if (rejected.length > 0 && expired.length > 0) {
+          reason = 'You have expired and rejected documents. Please renew or re-upload them before evaluation starts.';
+        } else if (rejected.length > 0) {
+          reason = 'You have rejected documents. Please re-upload them before evaluation starts.';
+        } else if (expired.length > 0) {
+          reason = 'You have expired documents. Please renew them before evaluation starts.';
         }
 
         setHasExpiredDocuments(expired.length > 0);
@@ -91,7 +79,7 @@ export function useSupplierCompliance(supplierId: string) {
         setHasRejectedDocuments(rejected.length > 0);
         setHasPendingDocuments(pending.length > 0);
         setBlockingDocuments(blocking);
-        setCanParticipate(!blocked);
+        setCanParticipate(true);
         setComplianceReason(reason);
       } catch (error) {
         console.error('Error checking document compliance:', error);
