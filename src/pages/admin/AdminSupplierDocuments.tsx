@@ -19,12 +19,14 @@ interface Document {
   uploadDate: string; expiryDate?: string; requiresExpiry?: boolean;
   isRenewal?: boolean; replacedAt?: string;
   statusInfo?: { status: string; daysRemaining: number | null; label: string; color: string; };
+  rejectionReason?: string;
 }
 
 interface ExperienceDocument {
   company: string; fileName: string; uploadDate: string;
   status: 'Verified' | 'Pending' | 'Rejected';
   index: number;
+  // rejectionReason?: string;
 }
 
 interface Supplier {
@@ -245,6 +247,8 @@ export default function AdminSupplierDocuments() {
   const replacedDocuments   = supplier.documents.filter(d => d.status === 'Replaced');
   const pendingExperiences  = supplier.experienceDocuments.filter(e => e.status === 'Pending');
   const verifiedExperiences = supplier.experienceDocuments.filter(e => e.status === 'Verified');
+  const rejectedDocuments   = supplier.documents.filter(d => d.status === 'Rejected');
+  // const rejectedExperiences = supplier.experienceDocuments.filter(e => e.status === 'Rejected');
 
   return (
     <PortalLayout
@@ -308,6 +312,25 @@ export default function AdminSupplierDocuments() {
             </div>
             {verifiedDocuments.map((doc, idx) => (
               <DocumentViewRow key={`${doc.docType}-${idx}`} doc={doc} onView={viewDocument} getStatusColor={getStatusColor} getStatusIcon={getStatusIcon} />
+            ))}
+          </div>
+        )}
+
+        {rejectedDocuments.length > 0 && (
+          <div className="glass-card overflow-hidden border-red-500/30">
+            <div className="p-4 border-b border-border bg-red-500/5">
+              <h3 className="font-bold flex items-center gap-2 text-red-600">
+                <XCircle size={16} />Rejected Documents ({rejectedDocuments.length})
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">Waiting for the supplier to upload a corrected version</p>
+            </div>
+            {rejectedDocuments.map((doc, idx) => (
+              <div key={`${doc.docType}-${idx}`}>
+                <DocumentViewRow doc={doc} onView={viewDocument} getStatusColor={getStatusColor} getStatusIcon={getStatusIcon} />
+                {doc.rejectionReason && (
+                  <p className="px-4 pb-3 -mt-2 text-xs text-red-600">Reason: {doc.rejectionReason}</p>
+                )}
+              </div>
             ))}
           </div>
         )}
